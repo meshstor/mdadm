@@ -31,6 +31,23 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <sys/syscall.h>
+#include <linux/capability.h>
+
+static int check_sys_admin_cap(void)
+{
+	struct __user_cap_header_struct header;
+	struct __user_cap_data_struct data[2];
+
+	header.version = _LINUX_CAPABILITY_VERSION_3;
+	header.pid = 0;
+
+	if (syscall(SYS_capget, &header, &data) == 0) {
+		if (data[0].effective & (1 << CAP_SYS_ADMIN))
+			return 1;
+	}
+	return 0;
+}
 
 /**
  * set_bitmap_value() - set bitmap value.
@@ -1422,7 +1439,7 @@ int main(int argc, char *argv[])
 	if ((mode == MISC && devmode == 'E') ||
 	    (mode == MONITOR && spare_sharing == 0))
 		/* Anyone may try this */;
-	else if (geteuid() != 0) {
+	else if (!check_sys_admin_cap()) {
 		pr_err("must be super-user to perform this action\n");
 		exit(1);
 	}
