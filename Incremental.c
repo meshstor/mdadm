@@ -582,6 +582,13 @@ int Incremental(struct mddev_dev *devlist, struct context *c,
 					}
 				}
 
+				if (!sysfs_bitmap_type_supported(sra, "llbitmap")) {
+					pr_err("%s: on-disk bitmap is lockless (v6) but running kernel does not support llbitmap. Upgrade the kernel or re-create the array with --bitmap=internal.\n",
+					       chosen_name);
+					rv = 1;
+					goto out;
+				}
+
 				rv = sysfs_set_str(sra, NULL, "bitmap_type", "llbitmap");
 				if (rv)
 					goto out;
