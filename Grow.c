@@ -293,6 +293,11 @@ int Grow_addbitmap(char *devname, int fd, struct context *c, struct shape *s)
 	if (s->btype == BitmapUnknown)
 		return 1;
 
+	if (s->btype == BitmapAuto) {
+		pr_err("--bitmap=auto is not supported with --grow; use --bitmap=internal or --bitmap=lockless explicitly.\n");
+		return 1;
+	}
+
 	if (s->btype == BitmapCluster)
 		major = BITMAP_MAJOR_CLUSTERED;
 
