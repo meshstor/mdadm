@@ -1,0 +1,67 @@
+# Test --bitmap=auto runtime detection.
+#
+# Behavior:
+#   - On a kernel that registers the llbitmap submodule, --bitmap=auto
+#     must produce an array whose /sys/block/mdX/md/bitmap_type has
+#     [llbitmap] bracketed.
+#   - On a kernel without llbitmap registered, it must produce
+#     [internal] and the test SKIPs the llbitmap half.
+#   - Stop + re-assemble preserves the bitmap type.
+
+set -e -u
+
+if ! mdadm -CR $md0 -l 1 -n 2 --bitmap=auto $dev0 $dev1 ; then
+	echo "mdadm --create --bitmap=auto failed unexpectedly"
+	exit 1
+fi
+
+check raid1
+check bitmap
+
+md_name=$(basename $md0)
+btype_path=/sys/block/$md_name/md/bitmap_type
+
+if [ ! -e "$btype_path" ] ; then
+	echo "SKIP: $btype_path not present (kernel lacks multi-bitmap API)"
+	mdadm -S $md0
+	exit 0
+fi
+
+bt=$(cat "$btype_path")
+echo "bitmap_type after create: $bt"
+
+case "$bt" in
+	*\[llbitmap\]* )
+		echo "auto resolved to llbitmap (expected on capable kernel)"
+		;;
+	*\[internal\]* )
+		echo "auto resolved to internal (kernel lacks llbitmap submodule)"
+		mdadm -S $md0
+		exit 0
+		;;
+	* )
+		echo "unexpected bitmap_type after --bitmap=auto: $bt"
+		mdadm -S $md0
+		exit 1
+		;;
+esac
+
+mdadm -S $md0
+mdadm -A $md0 $dev0 $dev1
+check raid1
+
+bt2=$(cat "$btype_path")
+echo "bitmap_type after reassemble: $bt2"
+case "$bt2" in
+	*\[llbitmap\]* )
+		echo "llbitmap preserved across reassemble"
+		;;
+	* )
+		echo "bitmap type not preserved across reassemble: $bt2"
+		mdadm -S $md0
+		exit 1
+		;;
+esac
+
+mdadm -S $md0
+exit 0
