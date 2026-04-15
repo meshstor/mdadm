@@ -1827,9 +1827,15 @@ try_again:
 	}
 
 	if (st->ss->get_bitmap_type &&
-	    st->ss->get_bitmap_type(st) == BITMAP_MAJOR_LOCKLESS &&
-	    sysfs_set_str(content, NULL, "bitmap_type", "llbitmap"))
-		goto out;
+	    st->ss->get_bitmap_type(st) == BITMAP_MAJOR_LOCKLESS) {
+		if (!sysfs_bitmap_type_supported(content, "llbitmap")) {
+			pr_err("%s: on-disk bitmap is lockless (v6) but running kernel does not support llbitmap. Upgrade the kernel or re-create the array with --bitmap=internal.\n",
+			       mddev);
+			goto out;
+		}
+		if (sysfs_set_str(content, NULL, "bitmap_type", "llbitmap"))
+			goto out;
+	}
 
 	/* If we are in the middle of a reshape we may need to restore saved data
 	 * that was moved aside due to the reshape overwriting live data
