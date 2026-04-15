@@ -740,6 +740,23 @@ parameter and are stored internally.
 .B none
 - create array with no bitmap or remove any present bitmap (grow mode).
 
+.B auto
+- prefer the lockless bitmap on kernels that support it; fall back to the
+legacy internal bitmap otherwise. Detection is done at runtime by probing
+the per-array sysfs file
+.B /sys/block/md\fIX\fP/md/bitmap_type ,
+so it works correctly on kernels where the md module has been backported
+independently of the host kernel version. Only valid with
+.BR \-\-create ;
+not accepted with
+.BR \-\-grow .
+Not compatible with
+.BR \-\-nodes ;
+use
+.B clustered
+explicitly for clustered arrays. Recommended for new arrays on modern
+kernels.
+
 .TP
 .BR \-\-bitmap\-chunk=
 Set the chunk size of the bitmap.  Each bit corresponds to that many
