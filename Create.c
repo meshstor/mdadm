@@ -542,6 +542,9 @@ int Create(struct supertype *st, struct mddev_ident *ident, int subdevs,
 	} else if (s->btype == BitmapLockless) {
 		major_num = BITMAP_MAJOR_LOCKLESS;
 	}
+	/* BitmapAuto is deliberately not handled here: the sysfs probe
+	 * that selects lockless-vs-internal has to run after sysfs_init()
+	 * below, so major_num is resolved at that point instead. */
 
 	memset(&info, 0, sizeof(info));
 	if (s->level == UnSet && st && st->ss->default_geometry)
@@ -1148,6 +1151,15 @@ int Create(struct supertype *st, struct mddev_ident *ident, int subdevs,
 	if (sysfs_init(&info, mdfd, NULL)) {
 		pr_err("unable to initialize sysfs\n");
 		goto abort_locked;
+	}
+
+	if (s->btype == BitmapAuto) {
+		if (sysfs_bitmap_type_supported(&info, "llbitmap")) {
+			s->btype = BitmapLockless;
+			major_num = BITMAP_MAJOR_LOCKLESS;
+		} else {
+			s->btype = BitmapInternal;
+		}
 	}
 
 	if (did_default) {
