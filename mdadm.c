@@ -76,7 +76,11 @@ static mdadm_status_t set_bitmap_value(struct shape *s, struct context *c, char 
 
 	if (strcmp(val, "lockless") == 0) {
 		s->btype = BitmapLockless;
-		pr_info("Experimental lockless bitmap, use at your own disk!\n");
+		return MDADM_STATUS_SUCCESS;
+	}
+
+	if (strcmp(val, "auto") == 0) {
+		s->btype = BitmapAuto;
 		return MDADM_STATUS_SUCCESS;
 	}
 
@@ -95,7 +99,7 @@ static mdadm_status_t set_bitmap_value(struct shape *s, struct context *c, char 
 		return MDADM_STATUS_ERROR;
 	}
 
-	pr_err("--bitmap value must be 'internal', 'clustered' or 'none'\n");
+	pr_err("--bitmap value must be 'none', 'internal', 'lockless', 'auto', or 'clustered'\n");
 	pr_err("Current value is \"%s\"\n", val);
 	return MDADM_STATUS_ERROR;
 }
@@ -1316,13 +1320,18 @@ int main(int argc, char *argv[])
 			       map_num_s(consistency_policies, s.consistency_policy));
 			exit(2);
 		} else if ((s.btype == BitmapInternal || s.btype == BitmapCluster ||
-			    s.btype == BitmapLockless) &&
+			    s.btype == BitmapLockless || s.btype == BitmapAuto) &&
 			   s.consistency_policy != CONSISTENCY_POLICY_BITMAP &&
 			   s.consistency_policy != CONSISTENCY_POLICY_JOURNAL) {
 			pr_err("--bitmap is not compatible with consistency policy: %s\n",
 			       map_num_s(consistency_policies, s.consistency_policy));
 			exit(2);
 		}
+	}
+
+	if (s.btype == BitmapAuto && c.nodes >= 1) {
+		pr_err("--bitmap=auto cannot be combined with --nodes; use --bitmap=clustered explicitly.\n");
+		exit(2);
 	}
 
 	if (s.write_zeroes && !s.assume_clean) {
