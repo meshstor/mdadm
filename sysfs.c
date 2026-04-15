@@ -24,6 +24,7 @@
  */
 
 #include	"mdadm.h"
+#include	"bitmap_parse.h"
 #include	"dlink.h"
 #include	"xmalloc.h"
 
@@ -782,6 +783,18 @@ int sysfs_get_str(struct mdinfo *sra, struct mdinfo *dev,
 	n = sysfs_fd_get_str(fd, val, size);
 	close(fd);
 	return n;
+}
+
+int sysfs_bitmap_type_supported(struct mdinfo *info, const char *type)
+{
+	char buf[256];
+	int n;
+
+	n = sysfs_get_str(info, NULL, "bitmap_type", buf, sizeof(buf));
+	if (n <= 0)
+		return 0;
+
+	return bitmap_type_list_contains(buf, type);
 }
 
 int sysfs_set_safemode(struct mdinfo *sra, unsigned long ms)
