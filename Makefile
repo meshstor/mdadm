@@ -195,7 +195,7 @@ MON_OBJS = mdmon.o monitor.o managemon.o uuid.o util.o maps.o mdstat.o sysfs.o c
 	Kill.o dlink.o ReadMe.o super-intel.o \
 	super-mbr.o super-gpt.o \
 	super-ddf.o sha1.o crc32.o msg.o bitmap.o xmalloc.o \
-	platform-intel.o probe_roms.o crc32c.o drive_encryption.o
+	platform-intel.o probe_roms.o crc32c.o drive_encryption.o bitmap_parse.o
 
 MON_SRCS = $(patsubst %.o,%.c,$(MON_OBJS))
 
