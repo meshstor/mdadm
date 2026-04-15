@@ -562,6 +562,7 @@ enum bitmap_type {
 	BitmapInternal,
 	BitmapCluster,
 	BitmapLockless,
+	BitmapAuto,
 	BitmapUnknown,
 };
 
