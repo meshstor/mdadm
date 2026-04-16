@@ -817,6 +817,7 @@ extern int sysfs_attribute_available(struct mdinfo *sra, struct mdinfo *dev,
 				     char *name);
 extern int sysfs_get_str(struct mdinfo *sra, struct mdinfo *dev,
 			 char *name, char *val, int size);
+extern int sysfs_bitmap_type_supported(struct mdinfo *info, const char *type);
 extern int sysfs_set_safemode(struct mdinfo *sra, unsigned long ms);
 extern int sysfs_set_array(struct mdinfo *info);
 extern int sysfs_add_disk(struct mdinfo *sra, struct mdinfo *sd, int resume);
