@@ -122,10 +122,51 @@ static void test_path_to_subsys(void)
 	}
 }
 
+static void test_for_devnm(void)
+{
+	const struct subsys *s;
+	s = subsys_for_devnm("md0");
+	check_int("for_devnm md0 -> md",  s == &subsys_md, 1);
+	s = subsys_for_devnm("md127");
+	check_int("for_devnm md127 -> md", s == &subsys_md, 1);
+	s = subsys_for_devnm("md_d0");
+	check_int("for_devnm md_d0 -> md", s == &subsys_md, 1);
+	s = subsys_for_devnm("ms0");
+	check_int("for_devnm ms0 -> ms",  s == &subsys_ms, 1);
+	s = subsys_for_devnm("ms42");
+	check_int("for_devnm ms42 -> ms", s == &subsys_ms, 1);
+	s = subsys_for_devnm("sda");
+	check_int("for_devnm sda -> NULL", s == NULL, 1);
+	s = subsys_for_devnm("");
+	check_int("for_devnm empty -> NULL", s == NULL, 1);
+	s = subsys_for_devnm(NULL);
+	check_int("for_devnm NULL -> NULL", s == NULL, 1);
+}
+
+static void test_for_major(void)
+{
+	const struct subsys *s;
+	s = subsys_for_major(9);
+	check_int("for_major 9 -> md", s == &subsys_md, 1);
+
+	subsys_md.mdp_major = 254;  /* simulate startup discovery */
+	s = subsys_for_major(254);
+	check_int("for_major 254 -> md (mdp)", s == &subsys_md, 1);
+
+	subsys_ms.major = 252;
+	s = subsys_for_major(252);
+	check_int("for_major 252 -> ms", s == &subsys_ms, 1);
+
+	s = subsys_for_major(8);
+	check_int("for_major 8 -> NULL", s == NULL, 1);
+}
+
 int main(void)
 {
 	test_proc_devices();
 	test_path_to_subsys();
+	test_for_devnm();
+	test_for_major();
 
 	if (failures) {
 		printf("%d test(s) failed\n", failures);

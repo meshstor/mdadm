@@ -131,14 +131,36 @@ const struct subsys *path_to_subsys(const char *path)
 
 const struct subsys *subsys_for_devnm(const char *devnm)
 {
-	(void)devnm;
-	return NULL; /* Task 5 */
+	if (!devnm || !*devnm)
+		return NULL;
+	struct subsys *cs[2] = { &subsys_md, &subsys_ms };
+	for (int i = 0; i < 2; i++) {
+		struct subsys *s = cs[i];
+		size_t plen = strlen(s->devnm_prefix);
+		if (s->devnm_part_prefix) {
+			size_t pplen = strlen(s->devnm_part_prefix);
+			if (strncmp(devnm, s->devnm_part_prefix, pplen) == 0 &&
+			    isdigit((unsigned char)devnm[pplen]))
+				return s;
+		}
+		if (strncmp(devnm, s->devnm_prefix, plen) == 0 &&
+		    isdigit((unsigned char)devnm[plen]))
+			return s;
+	}
+	return NULL;
 }
 
 const struct subsys *subsys_for_major(unsigned int major)
 {
-	(void)major;
-	return NULL; /* Task 5 */
+	struct subsys *cs[2] = { &subsys_md, &subsys_ms };
+	for (int i = 0; i < 2; i++) {
+		struct subsys *s = cs[i];
+		if (s->major > 0 && (unsigned int)s->major == major)
+			return s;
+		if (s->mdp_major > 0 && (unsigned int)s->mdp_major == major)
+			return s;
+	}
+	return NULL;
 }
 
 const struct subsys *subsys_scan_argv(int argc, char **argv, bool *mixed_out)
