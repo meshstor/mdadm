@@ -2581,7 +2581,8 @@ bool set_md_mod_parameter(const char *name, const char *value)
 	int fd;
 	bool ret = true;
 
-	snprintf(path, sizeof(path), "/sys/module/md_mod/parameters/%s", name);
+	snprintf(path, sizeof(path), "/sys/module/%s_mod/parameters/%s",
+		 current_subsys->name, name);
 
 	fd = open(path, O_WRONLY);
 	if (fd < 0) {
@@ -2602,10 +2603,11 @@ bool set_md_mod_parameter(const char *name, const char *value)
 bool init_md_mod(void)
 {
 	bool ret = true;
-	char module_path[32];
+	char module_path[64];
 	FILE *fp;
 
-	snprintf(module_path, sizeof(module_path), "/sys/module/md_mod");
+	snprintf(module_path, sizeof(module_path), "/sys/module/%s_mod",
+		 current_subsys->name);
 	fp = fopen(module_path, "r");
 	if (fp == NULL) {
 

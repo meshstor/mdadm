@@ -33,9 +33,11 @@ int create_named_array(char *devnm)
 {
 	int fd;
 	int n = -1;
-	static const char new_array_file[] = {
-		"/sys/module/md_mod/parameters/new_array"
-	};
+	char new_array_file[64];
+
+	snprintf(new_array_file, sizeof(new_array_file),
+		 "/sys/module/%s_mod/parameters/new_array",
+		 current_subsys->name);
 
 	fd = open(new_array_file, O_WRONLY);
 	if (fd >= 0) {
@@ -61,7 +63,7 @@ char *find_free_devnm(void)
 	int devnum;
 
 	for (devnum = 127; devnum != 128; devnum = devnum ? devnum - 1 : 511) {
-		sprintf(devnm, "md%d", devnum);
+		sprintf(devnm, "%s%d", current_subsys->devnm_prefix, devnum);
 
 		if (mddev_busy(devnm))
 			continue;
@@ -223,7 +225,7 @@ int create_mddev(char *dev, char *name, int trustworthy,
 		if (ep == n2 || *ep)
 			num = -1;
 		else {
-			sprintf(devnm, "md%d", num);
+			sprintf(devnm, "%s%d", current_subsys->devnm_prefix, num);
 			if (mddev_busy(devnm))
 				num = -1;
 		}
@@ -275,7 +277,7 @@ int create_mddev(char *dev, char *name, int trustworthy,
 
 	devnm[0] = 0;
 	if (num < 0 && cname && ci->names) {
-		sprintf(devnm, "md_%s", cname);
+		sprintf(devnm, "%s_%s", current_subsys->devnm_prefix, cname);
 		if (block_udev && udev_block(devnm) != UDEV_STATUS_SUCCESS)
 			return -1;
 		if (!create_named_array(devnm)) {
@@ -284,7 +286,7 @@ int create_mddev(char *dev, char *name, int trustworthy,
 		}
 	}
 	if (num >= 0) {
-		sprintf(devnm, "md%d", num);
+		sprintf(devnm, "%s%d", current_subsys->devnm_prefix, num);
 		if (block_udev && udev_block(devnm) != UDEV_STATUS_SUCCESS)
 			return -1;
 		if (!create_named_array(devnm)) {
@@ -303,7 +305,7 @@ int create_mddev(char *dev, char *name, int trustworthy,
 			}
 			strcpy(devnm, _devnm);
 		} else {
-			sprintf(devnm, "md%d", num);
+			sprintf(devnm, "%s%d", current_subsys->devnm_prefix, num);
 			if (mddev_busy(devnm)) {
 				pr_err("%s is already in use.\n",
 				       dev);
