@@ -1,0 +1,44 @@
+# Test zero-copy raid1 -> raid10 takeover via mdadm --grow --level=10.
+#
+# Kernel-side feature: raid10_takeover_raid1() in drivers/md/raid10.c.
+# On a kernel without that takeover path, mdadm's --grow request will
+# fail at level_store(). We don't try to detect that here; the test is
+# expected to PASS only on a meshstor-md (or upstream-with-takeover)
+# kernel.
+
+set -e -u
+
+# Create a 2-device raid1 with v1.x metadata (kernel refuses v0.90).
+mdadm -CR $md0 -l 1 -n 2 -e 1.2 $dev0 $dev1
+check resync
+check wait
+check state UU
+
+# Sanity: confirm we have raid1
+$mdadm -D $md0 | grep -q "Raid Level : raid1" || { echo "FAIL: not raid1 to start"; exit 1; }
+
+# Takeover.
+if ! $mdadm --grow $md0 --level=10 ; then
+	echo "SKIP: kernel does not implement raid1->raid10 takeover"
+	mdadm -S $md0
+	exit 0
+fi
+
+# Confirm the array is now raid10 with the same disk count.
+$mdadm -D $md0 | grep -q "Raid Level : raid10" || { echo "FAIL: not raid10 after takeover"; exit 1; }
+nd=$($mdadm -D $md0 | awk '/Raid Devices/ {print $4}')
+if [ "$nd" != "2" ]; then
+	echo "FAIL: expected 2 raid devices, got $nd"
+	exit 1
+fi
+
+# Confirm near=2 layout.
+$mdadm -D $md0 | grep -q "Layout : near=2" || { echo "FAIL: layout is not near=2"; $mdadm -D $md0; exit 1; }
+
+# Stop and reassemble; both members should still attach.
+mdadm -S $md0
+$mdadm -A $md0 $dev0 $dev1 || { echo "FAIL: cannot reassemble after takeover"; exit 1; }
+$mdadm -D $md0 | grep -q "Raid Level : raid10" || { echo "FAIL: assembled array is not raid10"; exit 1; }
+mdadm -S $md0
+
+echo "30r1tor10: PASS"

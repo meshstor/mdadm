@@ -1280,7 +1280,8 @@ char *analyse_change(char *devname, struct mdinfo *info, struct reshape *re)
 	case 1:
 		/* RAID1 can convert to RAID1 with different disks, or
 		 * raid5 with 2 disks, or
-		 * raid0 with 1 disk
+		 * raid0 with 1 disk, or
+		 * raid10 with the same disks (zero-copy near=N layout).
 		 */
 		if (info->new_level > 1 && (info->component_size & 7))
 			return "Cannot convert RAID1 of this size - reduce size to multiple of 4K first.";
@@ -1298,6 +1299,29 @@ char *analyse_change(char *devname, struct mdinfo *info, struct reshape *re)
 				/* Don't know what to do */
 				return "no change requested for Growing RAID1";
 			re->level = 1;
+			return NULL;
+		}
+		if (info->new_level == 10) {
+			/* Zero-copy raid1 -> raid10 takeover. Kernel converts
+			 * to raid10 near=N where N=raid_disks; disk count stays
+			 * the same and on-disk data is byte-identical. Kernel
+			 * does full precondition validation (no degraded, no
+			 * write-mostly, no clustered, no v0.90, etc).
+			 */
+			int n = info->array.raid_disks;
+			if (info->delta_disks != UnSet &&
+			    info->delta_disks != 0)
+				return "Cannot change number of disks in RAID1->RAID10 takeover";
+			if (n < 2)
+				return "RAID1->RAID10 takeover requires at least 2 disks";
+			if (info->new_layout != UnSet &&
+			    info->new_layout != (0x100 | n))
+				return "RAID1->RAID10 takeover only supports near=N (N=raid_disks) layout";
+			info->new_layout = 0x100 | n;
+			re->level = 10;
+			re->before.data_disks = n;
+			re->after.data_disks = n;
+			re->before.layout = info->array.layout;
 			return NULL;
 		}
 		if (info->array.raid_disks != 2 && info->new_level == 5)
