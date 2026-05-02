@@ -161,12 +161,80 @@ static void test_for_major(void)
 	check_int("for_major 8 -> NULL", s == NULL, 1);
 }
 
+static void test_scan_argv(void)
+{
+	bool mixed;
+	const struct subsys *s;
+
+	{
+		char *a[] = {"mdadm", "--create", "/dev/md0", "-l1", "-n2",
+		             "/dev/sda1", "/dev/sdb1", NULL};
+		mixed = false;
+		s = subsys_scan_argv(7, a, &mixed);
+		check_int("scan: --create /dev/md0 -> md",
+			  s == &subsys_md && !mixed, 1);
+	}
+	{
+		char *a[] = {"mdadm", "--detail", "/dev/ms0", NULL};
+		mixed = false;
+		s = subsys_scan_argv(3, a, &mixed);
+		check_int("scan: --detail /dev/ms0 -> ms",
+			  s == &subsys_ms && !mixed, 1);
+	}
+	{
+		char *a[] = {"mdadm", "--stop", "/dev/md0", "/dev/ms0", NULL};
+		mixed = false;
+		s = subsys_scan_argv(4, a, &mixed);
+		check_int("scan: mixed md+ms -> mixed", mixed, 1);
+		(void)s;
+	}
+	{
+		char *a[] = {"mdadm", "--scan", NULL};
+		mixed = false;
+		s = subsys_scan_argv(2, a, &mixed);
+		check_int("scan: no devices -> NULL", s == NULL && !mixed, 1);
+	}
+	{
+		/* key=value option args must be skipped (don't match /dev/md). */
+		char *a[] = {"mdadm", "--bitmap=/dev/md/bitmap-file",
+		             "--detail", "/dev/ms0", NULL};
+		mixed = false;
+		s = subsys_scan_argv(4, a, &mixed);
+		check_int("scan: skip key=value, find ms",
+			  s == &subsys_ms && !mixed, 1);
+	}
+	{
+		/* All "--" prefixed flags ignored. */
+		char *a[] = {"mdadm", "--monitor", "--scan", NULL};
+		mixed = false;
+		s = subsys_scan_argv(3, a, &mixed);
+		check_int("scan: only flags -> NULL", s == NULL && !mixed, 1);
+	}
+}
+
+#include <sys/stat.h>
+
+static void test_select_default_md(void)
+{
+	struct stat st;
+	if (stat("/proc/msstat", &st) == 0) {
+		printf("  skip: /proc/msstat exists, can't test md-default branch\n");
+		return;
+	}
+	char *a[] = {"mdadm", NULL};
+	subsys_select(1, a);
+	check_int("select default -> md (no /proc/msstat)",
+		  current_subsys == &subsys_md, 1);
+}
+
 int main(void)
 {
 	test_proc_devices();
 	test_path_to_subsys();
 	test_for_devnm();
 	test_for_major();
+	test_scan_argv();
+	test_select_default_md();
 
 	if (failures) {
 		printf("%d test(s) failed\n", failures);

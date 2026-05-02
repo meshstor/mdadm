@@ -165,15 +165,120 @@ const struct subsys *subsys_for_major(unsigned int major)
 
 const struct subsys *subsys_scan_argv(int argc, char **argv, bool *mixed_out)
 {
-	(void)argc; (void)argv;
+	const struct subsys *found = NULL;
 	if (mixed_out) *mixed_out = false;
-	return NULL; /* Task 6 */
+
+	for (int i = 1; i < argc; i++) {
+		const char *t = argv[i];
+		if (!t || !*t)
+			continue;
+		if (t[0] == '-')
+			continue;          /* option flag */
+		if (strchr(t, '='))
+			continue;          /* key=value option arg */
+		const struct subsys *s = path_to_subsys(t);
+		if (!s)
+			continue;
+		if (found && found != s) {
+			if (mixed_out) *mixed_out = true;
+			return NULL;
+		}
+		found = s;
+	}
+	return found;
+}
+
+static int read_file_to_buffer(const char *path, char *buf, size_t bufsz)
+{
+	FILE *f = fopen(path, "re");
+	if (!f) return -1;
+	size_t n = fread(buf, 1, bufsz - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+	return 0;
+}
+
+static const struct subsys *find_subsys_flag_in_argv(int argc, char **argv)
+{
+	for (int i = 1; i < argc; i++) {
+		const char *t = argv[i];
+		if (!t) continue;
+		const char *val = NULL;
+		if (strncmp(t, "--subsys=", 9) == 0) {
+			val = t + 9;
+		} else if (strcmp(t, "--subsys") == 0 && i + 1 < argc) {
+			val = argv[i + 1];
+		}
+		if (!val) continue;
+		if (strcmp(val, "md") == 0) return &subsys_md;
+		if (strcmp(val, "ms") == 0) return &subsys_ms;
+		fprintf(stderr,
+			"mdadm: --subsys=%s is not a known subsystem (use md or ms)\n",
+			val);
+		exit(2);
+	}
+	return NULL;
 }
 
 void subsys_select(int argc, char **argv)
 {
-	(void)argc; (void)argv;
-	/* Task 6 */
+	/* Always discover majors so subsys_for_major works for both. */
+	char buf[8192];
+	if (read_file_to_buffer("/proc/devices", buf, sizeof(buf)) == 0) {
+		int md_m = -1, mdp_m = -1, ms_m = -1;
+		subsys_parse_proc_devices(buf, &md_m, &mdp_m, &ms_m);
+		if (md_m  > 0) subsys_md.major     = md_m;
+		if (mdp_m > 0) subsys_md.mdp_major = mdp_m;
+		if (ms_m  > 0) subsys_ms.major     = ms_m;
+	}
+
+	const struct subsys *chosen = NULL;
+
+	/* 1. Explicit --subsys flag. */
+	chosen = find_subsys_flag_in_argv(argc, argv);
+
+	/* 2. Path-based detection from argv. */
+	if (!chosen) {
+		bool mixed = false;
+		chosen = subsys_scan_argv(argc, argv, &mixed);
+		if (mixed) {
+			fprintf(stderr,
+				"mdadm: cannot operate on md and ms devices in the same invocation\n");
+			exit(2);
+		}
+	}
+
+	/* 3. Env var. */
+	if (!chosen) {
+		const char *e = getenv("MDADM_SUBSYS");
+		if (e) {
+			if (strcmp(e, "md") == 0) chosen = &subsys_md;
+			else if (strcmp(e, "ms") == 0) chosen = &subsys_ms;
+			else {
+				fprintf(stderr,
+					"mdadm: MDADM_SUBSYS=%s is not a known subsystem\n", e);
+				exit(2);
+			}
+		}
+	}
+
+	/* 4. Default: ms if /proc/msstat exists, else md.
+	 *    Note: --scan operations against a config file that targets the
+	 *    other subsystem require explicit --subsys= or MDADM_SUBSYS to
+	 *    override. We don't pre-parse the config file here to keep
+	 *    subsystem selection deterministic. */
+	if (!chosen)
+		chosen = subsys_available(&subsys_ms) ? &subsys_ms : &subsys_md;
+
+	/* Verify availability of the chosen subsystem. */
+	if (chosen == &subsys_ms && !subsys_available(&subsys_ms)) {
+		fprintf(stderr,
+			"mdadm: --subsys=ms requested but the 'ms' block device class is not registered.\n"
+			"       Is the meshstor-md kernel module loaded?\n");
+		exit(2);
+	}
+
+	current_subsys = chosen;
 }
 
 const char *dev_num_pref(void)     { return current_subsys->dev_prefix; }
