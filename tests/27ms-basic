@@ -1,0 +1,58 @@
+# Test basic ms RAID lifecycle: create, detail, examine, stop, assemble.
+#
+# This test requires the meshstor-md kernel modules to be loaded
+# (i.e. /proc/msstat exists). If absent, the test SKIPs.
+
+set -e -u
+
+if [ ! -e /proc/msstat ]; then
+	echo "SKIP: /proc/msstat not present (meshstor-md not loaded)"
+	exit 0
+fi
+
+ms0=/dev/ms0
+
+# Create raid1 on /dev/ms0
+if ! $mdadm --subsys=ms -CR $ms0 -l 1 -n 2 $dev0 $dev1 ; then
+	echo "mdadm --subsys=ms --create failed"
+	exit 1
+fi
+
+# Verify /dev/ms0 exists
+if [ ! -b $ms0 ]; then
+	echo "FAIL: $ms0 was not created"
+	exit 1
+fi
+
+# Verify /sys/block/ms0/ms/ exists
+if [ ! -d /sys/block/ms0/ms ]; then
+	echo "FAIL: /sys/block/ms0/ms not present"
+	$mdadm --subsys=ms -S $ms0 || true
+	exit 1
+fi
+
+# Verify /proc/msstat shows the array
+if ! grep -q '^ms0' /proc/msstat ; then
+	echo "FAIL: /proc/msstat does not list ms0"
+	cat /proc/msstat
+	$mdadm --subsys=ms -S $ms0 || true
+	exit 1
+fi
+
+# Detail
+$mdadm --subsys=ms -D $ms0 || { echo "detail failed"; exit 1; }
+
+# Examine the components
+$mdadm -E $dev0 || { echo "examine $dev0 failed"; exit 1; }
+$mdadm -E $dev1 || { echo "examine $dev1 failed"; exit 1; }
+
+# Stop
+$mdadm --subsys=ms -S $ms0 || { echo "stop failed"; exit 1; }
+
+# Assemble back
+$mdadm --subsys=ms -A $ms0 $dev0 $dev1 || { echo "assemble failed"; exit 1; }
+
+# Final stop
+$mdadm --subsys=ms -S $ms0 || true
+
+echo "27ms-basic: PASS"
