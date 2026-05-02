@@ -182,7 +182,8 @@ OBJS = mdadm.o config.o policy.o mdstat.o  ReadMe.o uuid.o util.o maps.o lib.o u
        mdopen.o super0.o super1.o super-ddf.o super-intel.o bitmap.o \
        super-mbr.o super-gpt.o \
        restripe.o sysfs.o sha1.o mapfile.o crc32.o msg.o xmalloc.o \
-       platform-intel.o probe_roms.o crc32c.o drive_encryption.o bitmap_parse.o
+       platform-intel.o probe_roms.o crc32c.o drive_encryption.o bitmap_parse.o \
+       subsys.o
 
 CHECK_OBJS = restripe.o uuid.o sysfs.o maps.o lib.o xmalloc.o dlink.o
 
@@ -256,6 +257,9 @@ raid6check : raid6check.o mdadm.h $(CHECK_OBJS)
 
 test-bitmap-parser: test-bitmap-parser.c bitmap_parse.c bitmap_parse.h
 	$(CC) $(CWFLAGS) $(CXFLAGS) -o $@ test-bitmap-parser.c bitmap_parse.c
+
+test-subsys: test-subsys.c subsys.c subsys.h
+	$(CC) $(CWFLAGS) $(CXFLAGS) -o $@ test-subsys.c subsys.c
 
 mdadm.8 : mdadm.8.in
 	sed -e 's/{DEFAULT_METADATA}/$(DEFAULT_METADATA)/g' \
