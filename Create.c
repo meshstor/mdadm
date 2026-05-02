@@ -546,6 +546,12 @@ int Create(struct supertype *st, struct mddev_ident *ident, int subdevs,
 	 * that selects lockless-vs-internal has to run after sysfs_init()
 	 * below, so major_num is resolved at that point instead. */
 
+	if (current_subsys == &subsys_ms && st && st->ss && st->ss->external) {
+		pr_err("external-metadata arrays (e.g. IMSM, DDF) are not supported under --subsys=ms\n");
+		pr_err("(mdmon is out of scope for ms; use --subsys=md for external metadata)\n");
+		return 1;
+	}
+
 	memset(&info, 0, sizeof(info));
 	if (s->level == UnSet && st && st->ss->default_geometry)
 		st->ss->default_geometry(st, &s->level, NULL, NULL);
