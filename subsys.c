@@ -93,8 +93,40 @@ int subsys_parse_proc_devices(const char *content, int *md_major,
 
 const struct subsys *path_to_subsys(const char *path)
 {
-	(void)path;
-	return NULL; /* Task 4 */
+	if (!path || !*path)
+		return NULL;
+
+	/* Strip leading "/dev/" if present. */
+	const char *p = path;
+	if (strncmp(p, "/dev/", 5) == 0)
+		p += 5;
+	if (!*p)
+		return NULL;
+
+	struct subsys *candidates[2] = { &subsys_md, &subsys_ms };
+	for (int i = 0; i < 2; i++) {
+		const struct subsys *s = candidates[i];
+		size_t plen = strlen(s->devnm_prefix);
+
+		/* Named-device dir: "<devnm_prefix>/<name>" */
+		if (strncmp(p, s->devnm_prefix, plen) == 0 &&
+		    p[plen] == '/' && p[plen + 1] != '\0')
+			return s;
+
+		/* Partitionable: "md_dN" (md only) */
+		if (s->devnm_part_prefix) {
+			size_t pplen = strlen(s->devnm_part_prefix);
+			if (strncmp(p, s->devnm_part_prefix, pplen) == 0 &&
+			    isdigit((unsigned char)p[pplen]))
+				return s;
+		}
+
+		/* Numbered: "<devnm_prefix>N" */
+		if (strncmp(p, s->devnm_prefix, plen) == 0 &&
+		    isdigit((unsigned char)p[plen]))
+			return s;
+	}
+	return NULL;
 }
 
 const struct subsys *subsys_for_devnm(const char *devnm)

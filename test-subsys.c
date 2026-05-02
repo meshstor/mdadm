@@ -69,9 +69,63 @@ static void test_proc_devices(void)
 	check_int("substring guard: ms=-1", ms, -1);
 }
 
+static void test_path_to_subsys(void)
+{
+	struct {
+		const char *path;
+		const char *want;  /* "md", "ms", or NULL for no match */
+	} cases[] = {
+		/* md cases */
+		{"/dev/md0",          "md"},
+		{"/dev/md127",        "md"},
+		{"/dev/md_d0",        "md"},
+		{"/dev/md/home",      "md"},
+		{"/dev/md/0",         "md"},
+		{"md0",               "md"},
+		{"md_d0",             "md"},
+		/* ms cases */
+		{"/dev/ms0",          "ms"},
+		{"/dev/ms42",         "ms"},
+		{"/dev/ms/home",      "ms"},
+		{"ms0",               "ms"},
+		/* near-misses */
+		{"/dev/sda",          NULL},
+		{"/dev/mapper/foo",   NULL},
+		{"/dev/msftp",        NULL},
+		{"/dev/mdadm-extra",  NULL},
+		{"/dev/md",           NULL},
+		{"/dev/ms",           NULL},
+		{"/dev/mdfoo",        NULL},
+		{"",                  NULL},
+		{"/dev/",             NULL},
+	};
+	for (size_t i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
+		const struct subsys *got = path_to_subsys(cases[i].path);
+		const char *got_name = got ? got->name : NULL;
+		bool match;
+		if (got_name == NULL && cases[i].want == NULL)
+			match = true;
+		else if (got_name == NULL || cases[i].want == NULL)
+			match = false;
+		else
+			match = strcmp(got_name, cases[i].want) == 0;
+		if (match) {
+			printf("  ok: path_to_subsys(%s) -> %s\n",
+			       cases[i].path, got_name ? got_name : "(null)");
+		} else {
+			printf("FAIL: path_to_subsys(%s) got %s want %s\n",
+			       cases[i].path,
+			       got_name ? got_name : "(null)",
+			       cases[i].want ? cases[i].want : "(null)");
+			failures++;
+		}
+	}
+}
+
 int main(void)
 {
 	test_proc_devices();
+	test_path_to_subsys();
 
 	if (failures) {
 		printf("%d test(s) failed\n", failures);
