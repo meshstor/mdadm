@@ -46,8 +46,49 @@ bool subsys_available(const struct subsys *s)
 int subsys_parse_proc_devices(const char *content, int *md_major,
 			      int *mdp_major, int *ms_major)
 {
-	(void)content; (void)md_major; (void)mdp_major; (void)ms_major;
-	return -1; /* Task 3 */
+	if (!content)
+		return -1;
+
+	bool in_block = false;
+	const char *p = content;
+	while (*p) {
+		const char *eol = strchr(p, '\n');
+		size_t len = eol ? (size_t)(eol - p) : strlen(p);
+
+		if (len >= 13 && strncmp(p, "Block devices", 13) == 0) {
+			in_block = true;
+		} else if (len >= 17 && strncmp(p, "Character devices", 17) == 0) {
+			in_block = false;
+		} else if (in_block && len > 0) {
+			/* Format: "  9 md", "254 mdp", "252 ms". */
+			const char *s = p;
+			while (s < p + len && isspace((unsigned char)*s)) s++;
+			if (s < p + len && isdigit((unsigned char)*s)) {
+				int major = 0;
+				while (s < p + len && isdigit((unsigned char)*s)) {
+					major = major * 10 + (*s - '0');
+					s++;
+				}
+				while (s < p + len && isspace((unsigned char)*s)) s++;
+				size_t name_len = (p + len) - s;
+				/* Trim trailing whitespace from name. */
+				while (name_len > 0 &&
+				       isspace((unsigned char)s[name_len - 1]))
+					name_len--;
+				if (name_len == 2 && strncmp(s, "md", 2) == 0) {
+					if (md_major) *md_major = major;
+				} else if (name_len == 3 && strncmp(s, "mdp", 3) == 0) {
+					if (mdp_major) *mdp_major = major;
+				} else if (name_len == 2 && strncmp(s, "ms", 2) == 0) {
+					if (ms_major) *ms_major = major;
+				}
+			}
+		}
+
+		if (!eol) break;
+		p = eol + 1;
+	}
+	return 0;
 }
 
 const struct subsys *path_to_subsys(const char *path)
