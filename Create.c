@@ -1132,14 +1132,17 @@ int Create(struct supertype *st, struct mddev_ident *ident, int subdevs,
 		name = strrchr(chosen_name, '/');
 
 		if (name) {
+			size_t plen = strlen(current_subsys->devnm_prefix);
 			name++;
 			if (strncmp(name, "md_", 3) == 0 &&
 			    strlen(name) > 3 && (name - chosen_name) == 5 /* /dev/ */)
 				name += 3;
-			else if (strncmp(name, "md", 2) == 0 &&
-				 strlen(name) > 2 && isdigit(name[2]) &&
+			else if (strncmp(name, current_subsys->devnm_prefix,
+					 plen) == 0 &&
+				 strlen(name) > plen &&
+				 isdigit((unsigned char)name[plen]) &&
 				 (name - chosen_name) == 5 /* /dev/ */)
-				name += 2;
+				name += plen;
 		}
 	}
 	if (!st->ss->init_super(st, &info.array, s, name, c->homehost, uuid,

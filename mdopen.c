@@ -155,11 +155,15 @@ int create_mddev(char *dev, char *name, int trustworthy,
 				num = strtoul(e, NULL, 10);
 			snprintf(cname, MD_NAME_MAX, "%s", dev + 5);
 			cname[e-(dev+5)] = 0;
-			/* name *must* be mdXX or md_dXX in this context */
+			/* name *must* be the active subsystem's prefix
+			 * (e.g. mdXX or md_dXX, or msXX) in this context */
 			if (num < 0 ||
-			    (strcmp(cname, "md") != 0 && strcmp(cname, "md_d") != 0)) {
-				pr_err("%s is an invalid name for an md device.  Try /dev/md/%s\n",
-					dev, dev+5);
+			    (strcmp(cname, current_subsys->devnm_prefix) != 0 &&
+			     (current_subsys->devnm_part_prefix == NULL ||
+			      strcmp(cname, current_subsys->devnm_part_prefix) != 0))) {
+				pr_err("%s is an invalid name for an %s device.  Try %s%s\n",
+				       dev, current_subsys->name,
+				       current_subsys->dev_dir, dev+5);
 				return -1;
 			}
 
@@ -208,8 +212,11 @@ int create_mddev(char *dev, char *name, int trustworthy,
 		char *n2 = name;
 		if (strncmp(n2, "/dev/", 5) == 0)
 			n2 += 5;
-		if (strncmp(n2, "md", 2) == 0)
-			n2 += 2;
+		{
+			size_t plen = strlen(current_subsys->devnm_prefix);
+			if (strncmp(n2, current_subsys->devnm_prefix, plen) == 0)
+				n2 += plen;
+		}
 		if (*n2 == '/')
 			n2++;
 		num = strtoul(n2, &ep, 10);
