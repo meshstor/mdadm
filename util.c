@@ -941,17 +941,31 @@ dev_t devnm2devid(char *devnm)
 		if (n > 0 && sscanf(buf, "%d:%d\n", &mjr, &mnr) == 2)
 			return makedev(mjr, mnr);
 	}
-	if (strncmp(devnm, "md_d", 4) == 0 &&
-	    isdigit(devnm[4]) &&
-	    (mnr = strtoul(devnm+4, &ep, 10)) >= 0 &&
-	    ep > devnm && *ep == 0)
-		return makedev(get_mdp_major(), mnr << MdpMinorShift);
-
-	if (strncmp(devnm, "md", 2) == 0 &&
-	    isdigit(devnm[2]) &&
-	    (mnr = strtoul(devnm+2, &ep, 10)) >= 0 &&
-	    ep > devnm && *ep == 0)
-		return makedev(MD_MAJOR, mnr);
+	{
+		const struct subsys *cs[2] = { &subsys_md, &subsys_ms };
+		for (int i = 0; i < 2; i++) {
+			const struct subsys *s = cs[i];
+			if (s->devnm_part_prefix && s->mdp_major > 0) {
+				size_t pplen = strlen(s->devnm_part_prefix);
+				if (strncmp(devnm, s->devnm_part_prefix, pplen) == 0 &&
+				    isdigit((unsigned char)devnm[pplen]) &&
+				    (mnr = strtoul(devnm + pplen, &ep, 10)) >= 0 &&
+				    ep > devnm && *ep == 0)
+					return makedev(s->mdp_major,
+						       mnr << MdpMinorShift);
+			}
+		}
+		for (int i = 0; i < 2; i++) {
+			const struct subsys *s = cs[i];
+			size_t plen = strlen(s->devnm_prefix);
+			if (s->major > 0 &&
+			    strncmp(devnm, s->devnm_prefix, plen) == 0 &&
+			    isdigit((unsigned char)devnm[plen]) &&
+			    (mnr = strtoul(devnm + plen, &ep, 10)) >= 0 &&
+			    ep > devnm && *ep == 0)
+				return makedev(s->major, mnr);
+		}
+	}
 
 	return 0;
 }
@@ -1550,7 +1564,8 @@ int open_container(int fd)
 		if (de->d_name[0] == '.')
 			continue;
 		/* Need to make sure it is a container and not a volume */
-		sprintf(e, "/%s/md/metadata_version", de->d_name);
+		sprintf(e, "/%s/%s/metadata_version", de->d_name,
+			current_subsys->sysfs_subdir);
 		dfd = open(path, O_RDONLY);
 		if (dfd < 0)
 			continue;
