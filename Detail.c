@@ -679,8 +679,9 @@ int Detail(char *dev, struct context *c)
 				if (de->d_name[0] == '.')
 					continue;
 				sprintf(path,
-					"/sys/block/%s/md/metadata_version",
-					de->d_name);
+					"/sys/block/%s/%s/metadata_version",
+					de->d_name,
+					current_subsys->sysfs_subdir);
 				if (load_sys(path, vbuf, sizeof(vbuf)) < 0)
 					continue;
 				if (strncmp(vbuf, "external:", 9) ||
