@@ -262,6 +262,22 @@ test-bitmap-parser: test-bitmap-parser.c bitmap_parse.c bitmap_parse.h
 test-subsys: test-subsys.c subsys.c subsys.h
 	$(CC) $(CWFLAGS) $(CXFLAGS) -o $@ test-subsys.c subsys.c
 
+# Lint: no hardcoded "/proc/mdstat", "/dev/md", or "/sys/block/.../md/"
+# string literals outside subsys.c, mdmon (out-of-scope), and the
+# kernel UAPI headers. Guards against future upstream rebases
+# reintroducing literals that bypass the subsys abstraction.
+check-no-hardcoded-md-paths:
+	@hits=$$(grep -nE '"/proc/mdstat"|"/sys/block/%s/md/' \
+		--include='*.c' --include='*.h' \
+		$$(ls *.c *.h | grep -v -E '^(subsys|mdmon|monitor|managemon|test-subsys|md_u|md_p)\.[ch]$$') \
+		2>/dev/null) ; \
+	if [ -n "$$hits" ]; then \
+		echo "$$hits" ; \
+		echo "FAIL: hardcoded md path literals found outside subsys.c" ; \
+		exit 1 ; \
+	fi ; \
+	echo "OK: no hardcoded md path literals"
+
 mdadm.8 : mdadm.8.in
 	sed -e 's/{DEFAULT_METADATA}/$(DEFAULT_METADATA)/g' \
 	-e 's,{MAP_PATH},$(MAP_PATH),g' -e 's,{CONFFILE},$(CONFFILE),g' \
