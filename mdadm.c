@@ -258,6 +258,11 @@ int main(int argc, char *argv[])
 			/* Silently ignore old option */
 			continue;
 
+		case Subsys:
+			/* Already processed by subsys_select() in main();
+			 * accepted here so getopt doesn't error. */
+			continue;
+
 		case Prefer:
 			if (c.prefer)
 				free(c.prefer);

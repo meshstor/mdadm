@@ -109,6 +109,7 @@ struct option long_options[] = {
 	{"update-subarray", 1, 0, UpdateSubarray},
 	{"udev-rules", 2, 0, UdevRules},
 	{"offroot", 0, 0, OffRootOpt},
+	{"subsys",  1, 0, Subsys},
 	{"examine-badblocks", 0, 0, ExamineBB},
 
 	{"dump", 1, 0, Dump},

@@ -499,6 +499,7 @@ enum special_options {
 	WriteJournal,
 	ConsistencyPolicy,
 	LogicalBlockSize,
+	Subsys,
 };
 
 enum update_opt {
