@@ -210,7 +210,8 @@ int sysfs_open_memb_attr(char *array_devnm, char *memb_devnm, char *attr, int of
 {
 	char path[PATH_MAX];
 
-	snprintf(path, PATH_MAX, "/sys/block/%s/md/dev-%s/%s", array_devnm, memb_devnm, attr);
+	snprintf(path, PATH_MAX, "/sys/block/%s/%s/dev-%s/%s",
+		 array_devnm, current_subsys->sysfs_subdir, memb_devnm, attr);
 
 	return open(path, oflag);
 }
@@ -220,7 +221,8 @@ int sysfs_open(char *devnm, char *devname, char *attr)
 	char fname[MAX_SYSFS_PATH_LEN];
 	int fd;
 
-	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/md/", devnm);
+	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/%s/",
+		 devnm, current_subsys->sysfs_subdir);
 	if (devname) {
 		strncat(fname, devname, MAX_SYSFS_PATH_LEN - strlen(fname));
 		strncat(fname, "/", MAX_SYSFS_PATH_LEN - strlen(fname));
@@ -251,7 +253,8 @@ int sysfs_init(struct mdinfo *mdi, int fd, char *devnm)
 	if (devnm == NULL)
 		goto out;
 
-	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/md", devnm);
+	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/%s",
+		 devnm, current_subsys->sysfs_subdir);
 
 	if (stat(fname, &stb))
 		goto out;
@@ -282,7 +285,8 @@ struct mdinfo *sysfs_read(int fd, char *devnm, unsigned long options)
 		return NULL;
 	}
 
-	sprintf(fname, "/sys/block/%s/md/", sra->sys_name);
+	sprintf(fname, "/sys/block/%s/%s/",
+		sra->sys_name, current_subsys->sysfs_subdir);
 	base = fname + strlen(fname);
 
 	sra->devs = NULL;
@@ -589,7 +593,8 @@ unsigned long long get_component_size(int fd)
 	if (fstat(fd, &stb))
 		return 0;
 	snprintf(fname, MAX_SYSFS_PATH_LEN,
-		 "/sys/block/%s/md/component_size", stat2devnm(&stb));
+		 "/sys/block/%s/%s/component_size",
+		 stat2devnm(&stb), current_subsys->sysfs_subdir);
 	fd = open(fname, O_RDONLY);
 	if (fd < 0)
 		return 0;
@@ -607,8 +612,9 @@ int sysfs_set_str(struct mdinfo *sra, struct mdinfo *dev,
 	char fname[MAX_SYSFS_PATH_LEN];
 	int fd;
 
-	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/md/%s/%s",
-		sra->sys_name, dev?dev->sys_name:"", name);
+	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/%s/%s/%s",
+		sra->sys_name, current_subsys->sysfs_subdir,
+		dev?dev->sys_name:"", name);
 	fd = open(fname, O_WRONLY);
 	if (fd < 0)
 		return -1;
@@ -665,8 +671,9 @@ int sysfs_attribute_available(struct mdinfo *sra, struct mdinfo *dev, char *name
 	char fname[MAX_SYSFS_PATH_LEN];
 	struct stat st;
 
-	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/md/%s/%s",
-		sra->sys_name, dev?dev->sys_name:"", name);
+	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/%s/%s/%s",
+		sra->sys_name, current_subsys->sysfs_subdir,
+		dev?dev->sys_name:"", name);
 
 	return stat(fname, &st) == 0;
 }
@@ -677,8 +684,9 @@ int sysfs_get_fd(struct mdinfo *sra, struct mdinfo *dev,
 	char fname[MAX_SYSFS_PATH_LEN];
 	int fd;
 
-	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/md/%s/%s",
-		sra->sys_name, dev?dev->sys_name:"", name);
+	snprintf(fname, MAX_SYSFS_PATH_LEN, "/sys/block/%s/%s/%s/%s",
+		sra->sys_name, current_subsys->sysfs_subdir,
+		dev?dev->sys_name:"", name);
 	fd = open(fname, O_RDWR);
 	if (fd < 0)
 		fd = open(fname, O_RDONLY);
@@ -1118,7 +1126,8 @@ int sysfs_rules_apply_check(const struct mdinfo *sra,
 		return -1;
 
 	result = snprintf(dname, MAX_SYSFS_PATH_LEN,
-			  "/sys/block/%s/md/", sra->sys_name);
+			  "/sys/block/%s/%s/",
+			  sra->sys_name, current_subsys->sysfs_subdir);
 	if (result < 0 || result >= MAX_SYSFS_PATH_LEN)
 		return -1;
 
