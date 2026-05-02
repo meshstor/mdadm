@@ -1770,7 +1770,8 @@ int Incremental_remove(char *devname, char *id_path, int verbose)
 
 	mdstat = mdstat_read(0, 0);
 	if (!mdstat) {
-		pr_err("Cannot read /proc/mdstat file, aborting\n");
+		pr_err("Cannot read %s file, aborting\n",
+		       current_subsys->proc_stat);
 		return 1;
 	}
 

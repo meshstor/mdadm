@@ -670,14 +670,15 @@ static void send_event_email(const struct event_data *data)
 	fprintf(mp, "This is an automatically generated mail message.\n");
 	fprintf(mp, "%s\n", data->message);
 
-	mdstat = fopen("/proc/mdstat", "r");
+	mdstat = fopen(current_subsys->proc_stat, "r");
 	if (!mdstat) {
-		pr_err("Cannot open /proc/mdstat\n");
+		pr_err("Cannot open %s\n", current_subsys->proc_stat);
 		pclose(mp);
 		return;
 	}
 
-	fprintf(mp, "The /proc/mdstat file currently contains the following:\n\n");
+	fprintf(mp, "The %s file currently contains the following:\n\n",
+		current_subsys->proc_stat);
 	while ((n = fread(buf, 1, sizeof(buf), mdstat)) > 0)
 		n = fwrite(buf, 1, n, mp);
 	fclose(mdstat);

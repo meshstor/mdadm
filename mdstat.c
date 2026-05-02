@@ -195,7 +195,7 @@ struct mdstat_ent *mdstat_read(int hold, int start)
 		else
 			return NULL;
 	} else
-		f = fopen("/proc/mdstat", "r");
+		f = fopen(current_subsys->proc_stat, "r");
 	if (f == NULL)
 		return NULL;
 

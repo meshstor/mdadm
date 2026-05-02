@@ -340,7 +340,8 @@ int block_monitor(char *container, const int freeze)
 
 	ent = mdstat_read(0, 0);
 	if (!ent) {
-		pr_err("failed to read /proc/mdstat while disabling mdmon\n");
+		pr_err("failed to read %s while disabling mdmon\n",
+		       current_subsys->proc_stat);
 		return -1;
 	}
 
@@ -424,7 +425,8 @@ void unblock_monitor(char *container, const int unfreeze)
 
 	ent = mdstat_read(0, 0);
 	if (!ent) {
-		pr_err("failed to read /proc/mdstat while unblocking container\n");
+		pr_err("failed to read %s while unblocking container\n",
+		       current_subsys->proc_stat);
 		return;
 	}
 
