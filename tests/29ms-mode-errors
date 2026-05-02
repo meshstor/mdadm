@@ -1,0 +1,55 @@
+# Test mdadm error paths around --subsys.
+# This test runs without needing meshstor-md kernel modules; it only
+# exercises argv parsing and the /proc/msstat probe.
+
+set -e -u
+
+# 1. Mixed-subsystem invocation rejects with exit 2
+out=$($mdadm --detail /dev/md0 /dev/ms0 2>&1) && rc=$? || rc=$?
+case "$out" in
+	*"cannot operate on md and ms devices"*)
+		;;
+	*)
+		echo "FAIL: mixed-subsystem error message missing"
+		echo "Got: $out"
+		exit 1
+		;;
+esac
+if [ $rc -ne 2 ]; then
+	echo "FAIL: mixed-subsystem expected rc=2, got rc=$rc"
+	exit 1
+fi
+
+# 2. --subsys=foobar rejects with exit 2
+out=$($mdadm --subsys=foobar --version 2>&1) && rc=$? || rc=$?
+case "$out" in
+	*"is not a known subsystem"*) ;;
+	*)
+		echo "FAIL: bad-subsys error message missing"
+		echo "Got: $out"
+		exit 1
+		;;
+esac
+if [ $rc -ne 2 ]; then
+	echo "FAIL: bad-subsys expected rc=2, got rc=$rc"
+	exit 1
+fi
+
+# 3. --subsys=ms when /proc/msstat absent rejects with exit 2
+if [ ! -e /proc/msstat ]; then
+	out=$($mdadm --subsys=ms --version 2>&1) && rc=$? || rc=$?
+	case "$out" in
+		*"'ms' block device class is not registered"*) ;;
+		*)
+			echo "FAIL: ms-not-loaded error message missing"
+			echo "Got: $out"
+			exit 1
+			;;
+	esac
+	if [ $rc -ne 2 ]; then
+		echo "FAIL: ms-not-loaded expected rc=2, got rc=$rc"
+		exit 1
+	fi
+fi
+
+echo "29ms-mode-errors: PASS"
