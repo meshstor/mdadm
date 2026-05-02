@@ -1,0 +1,42 @@
+# Test that md and ms arrays coexist on the same host.
+# Requires both /proc/mdstat and /proc/msstat to exist.
+
+set -e -u
+
+if [ ! -e /proc/msstat ]; then
+	echo "SKIP: /proc/msstat not present (meshstor-md not loaded)"
+	exit 0
+fi
+if [ ! -e /proc/mdstat ]; then
+	echo "SKIP: /proc/mdstat unexpectedly absent"
+	exit 0
+fi
+
+# Need 4 backing devices: 2 for md0, 2 for ms0
+if [ -z "${dev2:-}" ] || [ -z "${dev3:-}" ]; then
+	echo "SKIP: 28ms-coexist needs 4 backing devices (\$dev0..\$dev3)"
+	exit 0
+fi
+
+md0=/dev/md0
+ms0=/dev/ms0
+
+# Create both
+$mdadm -CR $md0 -l 1 -n 2 $dev0 $dev1
+$mdadm --subsys=ms -CR $ms0 -l 1 -n 2 $dev2 $dev3
+
+# Auto-detect: --detail /dev/md0 should pick md, --detail /dev/ms0 should pick ms
+$mdadm -D $md0 | grep -q "/dev/md0" || { echo "detail md0 failed"; exit 1; }
+$mdadm -D $ms0 | grep -q "/dev/ms0" || { echo "detail ms0 failed"; exit 1; }
+
+# /proc/mdstat shows md0, /proc/msstat shows ms0, no cross-contamination
+grep -q '^md0' /proc/mdstat || { echo "md0 not in /proc/mdstat"; exit 1; }
+grep -q '^ms0' /proc/msstat || { echo "ms0 not in /proc/msstat"; exit 1; }
+grep -q '^ms0' /proc/mdstat && { echo "ms0 leaked into /proc/mdstat"; exit 1; }
+grep -q '^md0' /proc/msstat && { echo "md0 leaked into /proc/msstat"; exit 1; }
+
+# Stop both
+$mdadm -S $md0
+$mdadm --subsys=ms -S $ms0
+
+echo "28ms-coexist: PASS"
