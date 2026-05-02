@@ -1200,7 +1200,7 @@ void sysfsline(char *line)
 		if (strncasecmp(w, "name=", 5) == 0) {
 			char *devname = w + 5;
 
-			if (strncmp(devname, DEV_MD_DIR, DEV_MD_DIR_LEN) == 0) {
+			if (strncmp(devname, dev_md_dir(), dev_md_dir_len()) == 0) {
 				if (sr->devname)
 					pr_err("Only give one device per SYSFS line: %s\n",
 						devname);

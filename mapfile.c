@@ -322,9 +322,9 @@ struct map_ent *map_by_name(struct map_ent **map, char *name)
 	for (mp = *map ; mp ; mp = mp->next) {
 		if (!mp->path)
 			continue;
-		if (strncmp(mp->path, DEV_MD_DIR, DEV_MD_DIR_LEN) != 0)
+		if (strncmp(mp->path, dev_md_dir(), dev_md_dir_len()) != 0)
 			continue;
-		if (strcmp(mp->path + DEV_MD_DIR_LEN, name) != 0)
+		if (strcmp(mp->path + dev_md_dir_len(), name) != 0)
 			continue;
 		if (!mddev_busy(mp->devnm)) {
 			mp->bad = 1;
@@ -410,7 +410,7 @@ void RebuildMap(void)
 			devid = devnm2devid(md->devnm);
 			path = map_dev(major(devid), minor(devid), 0);
 			if (path == NULL ||
-			    strncmp(path, DEV_MD_DIR, DEV_MD_DIR_LEN) != 0) {
+			    strncmp(path, dev_md_dir(), dev_md_dir_len()) != 0) {
 				/* We would really like a name that provides
 				 * an MD_DEVNAME for udev.
 				 * The name needs to be unique both in /dev/md/
@@ -431,7 +431,7 @@ void RebuildMap(void)
 				if (match && match->devname && match->devname[0] == '/') {
 					path = match->devname;
 					if (path[0] != '/') {
-						strcpy(namebuf, DEV_MD_DIR);
+						strcpy(namebuf, dev_md_dir());
 						strcat(namebuf, path);
 						path = namebuf;
 					}
@@ -475,15 +475,16 @@ void RebuildMap(void)
 
 					while (conflict) {
 						if (unum >= 0)
-							sprintf(namebuf, DEV_MD_DIR "%s%s%d",
+							sprintf(namebuf, "%s%s%s%d",
+								dev_md_dir(),
 								name, sep, unum);
 						else
-							sprintf(namebuf, DEV_MD_DIR "%s",
-								name);
+							sprintf(namebuf, "%s%s",
+								dev_md_dir(), name);
 						unum++;
 						if (lstat(namebuf, &stb) != 0 &&
 						    (map == NULL ||
-						     !map_by_name(&map, namebuf+8)))
+						     !map_by_name(&map, namebuf + dev_md_dir_len())))
 							conflict = 0;
 					}
 					path = namebuf;

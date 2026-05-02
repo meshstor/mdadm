@@ -449,8 +449,8 @@ int Incremental(struct mddev_dev *devlist, struct context *c,
 		for (d = sra->devs; d; d=d->next)
 			info.array.working_disks ++;
 	}
-	if (strncmp(chosen_name, DEV_MD_DIR, DEV_MD_DIR_LEN) == 0)
-		md_devname = chosen_name + DEV_MD_DIR_LEN;
+	if (strncmp(chosen_name, dev_md_dir(), dev_md_dir_len()) == 0)
+		md_devname = chosen_name + dev_md_dir_len();
 	else
 		md_devname = chosen_name;
 	if (c->export) {

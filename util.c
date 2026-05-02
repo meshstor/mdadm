@@ -987,7 +987,7 @@ static bool is_devname_numbered(const char *devname, const char *pref, const int
  */
 bool is_devname_md_numbered(const char *devname)
 {
-	return is_devname_numbered(devname, DEV_NUM_PREF, DEV_NUM_PREF_LEN);
+	return is_devname_numbered(devname, dev_num_pref(), dev_num_pref_len());
 }
 
 /**

@@ -508,7 +508,7 @@ static void brief_examine_super1(struct supertype *st, int verbose)
 
 	printf("ARRAY ");
 	if (nm) {
-		printf(DEV_MD_DIR "%s", nm);
+		printf("%s%s", dev_md_dir(), nm);
 		putchar(' ');
 	}
 	if (verbose && c)

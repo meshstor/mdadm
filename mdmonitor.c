@@ -257,7 +257,7 @@ int Monitor(struct mddev_dev *devlist,
 
 			st = xcalloc(1, sizeof *st);
 			snprintf(st->devname, sizeof(st->devname), "%s%s",
-				 '/' == *mdlist->devname ? "" : DEV_MD_DIR, mdlist->devname);
+				 '/' == *mdlist->devname ? "" : dev_md_dir(), mdlist->devname);
 			if (!is_mddev(st->devname)) {
 				free(st);
 				continue;

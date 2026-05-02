@@ -1800,9 +1800,14 @@ static void brief_examine_subarrays_ddf(struct supertype *st, int verbose)
 		uuid_from_super_ddf(st, info.uuid);
 		fname_from_uuid(&info, nbuf1);
 		_ddf_array_name(namebuf, ddf, i);
-		printf("ARRAY%s%s container=%s member=%d UUID=%s\n",
-		       namebuf[0] == '\0' ? "" : " " DEV_MD_DIR, namebuf,
-		       nbuf+5, i, nbuf1+5);
+		{
+			char prefix[16] = "";
+			if (namebuf[0] != '\0')
+				snprintf(prefix, sizeof(prefix), " %s",
+					 dev_md_dir());
+			printf("ARRAY%s%s container=%s member=%d UUID=%s\n",
+			       prefix, namebuf, nbuf+5, i, nbuf1+5);
+		}
 	}
 }
 

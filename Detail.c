@@ -281,8 +281,8 @@ int Detail(char *dev, struct context *c)
 		if (mp) {
 			detail_fname_from_uuid(mp, nbuf);
 			printf("MD_UUID=%s\n", nbuf + 5);
-			if (mp->path && strncmp(mp->path, DEV_MD_DIR, DEV_MD_DIR_LEN) == 0)
-				printf("MD_DEVNAME=%s\n", mp->path + DEV_MD_DIR_LEN);
+			if (mp->path && strncmp(mp->path, dev_md_dir(), dev_md_dir_len()) == 0)
+				printf("MD_DEVNAME=%s\n", mp->path + dev_md_dir_len());
 		}
 
 		map_free(map);
