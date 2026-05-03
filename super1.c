@@ -2494,10 +2494,10 @@ add_internal_bitmap1(struct supertype *st,
 
 	room -= bbl_size;
 	if (major == BITMAP_MAJOR_LOCKLESS) {
-		if (chunk != UnSet) {
-			pr_err("lockless bitmap doesn't support chunksize\n");
-			return -EINVAL;
-		}
+		/* Reserved space is fixed at 128 KiB regardless of chunk; if the
+		 * user supplied a chunksize, it flows into bms->chunksize but the
+		 * kernel auto-grows from MIN_CHUNK_SIZE on first-init
+		 * (BITMAP_FIRST_USE path). */
 		room = 128*2;
 	} else if (chunk == UnSet && room > 128*2) {
 		/* Limit to 128K of bitmap when chunk size not requested */

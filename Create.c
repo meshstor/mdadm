@@ -532,6 +532,7 @@ int Create(struct supertype *st, struct mddev_ident *ident, int subdevs,
 	unsigned long long newsize;
 	mdu_array_info_t inf;
 	int major_num = BITMAP_MAJOR_HI;
+	bool was_bitmap_auto = (s->btype == BitmapAuto);
 
 	if (s->btype == BitmapCluster) {
 		major_num = BITMAP_MAJOR_CLUSTERED;
@@ -1168,6 +1169,17 @@ int Create(struct supertype *st, struct mddev_ident *ident, int subdevs,
 			major_num = BITMAP_MAJOR_LOCKLESS;
 		} else {
 			s->btype = BitmapInternal;
+		}
+	}
+
+	if (s->btype == BitmapLockless && was_bitmap_auto) {
+		/* llbitmap silently ignores write-behind: sb->write_behind is
+		 * never read or written by md-llbitmap and bitmap_info.max_write_behind
+		 * stays zero. Drop the user's request rather than fail or
+		 * silently mislead them. */
+		if (s->write_behind) {
+			pr_err("--write-behind ignored: lockless bitmap does not implement write-behind throttling.\n");
+			s->write_behind = 0;
 		}
 	}
 

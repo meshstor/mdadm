@@ -1,0 +1,139 @@
+# Test --bitmap=auto + llbitmap-irrelevant flags on /dev/msN.
+#
+# Verifies:
+#   1. --bitmap=auto --bitmap-chunk=N --consistency-policy=bitmap succeeds
+#      (chunk passes through to lockless bitmap; kernel may auto-grow it)
+#   2. --bitmap=auto --write-behind=N succeeds with a warn line
+#      (write-behind is non-functional in llbitmap, so mdadm strips it)
+#   3. Both flags together: chunk passes silently, write-behind warns
+#   4. Non-power-of-two chunk still rejected at parse time (regression)
+#   5. Old-kernel fallback (no llbitmap): classic semantics, no warn
+#
+# Requires meshstor-md kernel modules. SKIPs if /proc/msstat absent.
+
+set -e -u
+
+if [ ! -e /proc/msstat ]; then
+	echo "SKIP: /proc/msstat not present (meshstor-md not loaded)"
+	exit 3
+fi
+
+ms0=/dev/ms0
+
+cleanup() {
+	$mdadm --subsys=ms -S $ms0 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Detect llbitmap availability empirically: do a throw-away create with
+# --bitmap=auto and inspect what the kernel actually selected. llbitmap may
+# be a separate module (md_llbitmap) or compiled into the subsystem module
+# (ms_mod), so name-based probes are unreliable.
+cleanup
+$mdadm --subsys=ms -CR $ms0 -l1 -n2 --bitmap=auto $dev0 $dev1 >/dev/null 2>&1 || {
+	echo "FAIL: probe-create --bitmap=auto failed; cannot determine llbitmap support"
+	exit 1
+}
+llbitmap_supported=no
+if [ -d /sys/block/ms0/ms/llbitmap ]; then
+	llbitmap_supported=yes
+fi
+cleanup
+
+# --- Sub-case 1: positive --- example command from the spec.
+cleanup
+err1=$($mdadm --subsys=ms -CR $ms0 -l1 -n2 \
+	--bitmap=auto --bitmap-chunk=128M --consistency-policy=bitmap \
+	$dev0 $dev1 2>&1) || {
+	echo "FAIL sub-case 1: create with --bitmap=auto --bitmap-chunk=128M failed"
+	echo "stderr: $err1"
+	exit 1
+}
+if [ ! -b $ms0 ]; then
+	echo "FAIL sub-case 1: $ms0 missing after create"
+	exit 1
+fi
+if [ "$llbitmap_supported" = "yes" ] && [ ! -d /sys/block/ms0/ms/llbitmap ]; then
+	echo "FAIL sub-case 1: /sys/block/ms0/ms/llbitmap missing (auto did not pick lockless)"
+	exit 1
+fi
+
+# --- Sub-case 2: warn-and-strip for --write-behind ---
+cleanup
+err2=$($mdadm --subsys=ms -CR $ms0 -l1 -n2 \
+	--bitmap=auto --write-behind=256 \
+	$dev0 $dev1 2>&1) || {
+	echo "FAIL sub-case 2: create with --bitmap=auto --write-behind=256 failed"
+	echo "stderr: $err2"
+	exit 1
+}
+case "$err2" in
+	*"--write-behind ignored"*) ;;
+	*)
+		if [ "$llbitmap_supported" = "yes" ]; then
+			echo "FAIL sub-case 2: expected '--write-behind ignored' warn, got:"
+			echo "$err2"
+			exit 1
+		fi
+		;;
+esac
+
+# --- Sub-case 3: both flags together ---
+cleanup
+err3=$($mdadm --subsys=ms -CR $ms0 -l1 -n2 \
+	--bitmap=auto --bitmap-chunk=128M --write-behind=256 \
+	--consistency-policy=bitmap $dev0 $dev1 2>&1) || {
+	echo "FAIL sub-case 3: create with both flags failed"
+	echo "stderr: $err3"
+	exit 1
+}
+if [ "$llbitmap_supported" = "yes" ]; then
+	case "$err3" in
+		*"--write-behind ignored"*) ;;
+		*)
+			echo "FAIL sub-case 3: expected --write-behind warn"
+			echo "$err3"
+			exit 1
+			;;
+	esac
+	case "$err3" in
+		*"--bitmap-chunk ignored"*)
+			echo "FAIL sub-case 3: chunk should NOT warn (it is supported in SB)"
+			echo "$err3"
+			exit 1
+			;;
+	esac
+fi
+
+# --- Sub-case 4: regression - non-power-of-two chunk still rejected ---
+cleanup
+out4=$($mdadm --subsys=ms -CR $ms0 -l1 -n2 \
+	--bitmap=auto --bitmap-chunk=100M \
+	$dev0 $dev1 2>&1) && rc4=$? || rc4=$?
+if [ $rc4 -eq 0 ]; then
+	echo "FAIL sub-case 4: --bitmap-chunk=100M (non-power-of-two) should fail"
+	echo "$out4"
+	exit 1
+fi
+
+# --- Sub-case 5: old-kernel-fallback path (only if llbitmap absent) ---
+if [ "$llbitmap_supported" = "no" ]; then
+	cleanup
+	err5=$($mdadm --subsys=ms -CR $ms0 -l1 -n2 \
+		--bitmap=auto --bitmap-chunk=128M --consistency-policy=bitmap \
+		$dev0 $dev1 2>&1) || {
+		echo "FAIL sub-case 5: classic-bitmap fallback failed"
+		echo "stderr: $err5"
+		exit 1
+	}
+	case "$err5" in
+		*"ignored"*)
+			echo "FAIL sub-case 5: classic fallback should not emit ignore warns"
+			echo "$err5"
+			exit 1
+			;;
+	esac
+fi
+
+cleanup
+echo "30ms-bitmap-auto-flags: PASS"
