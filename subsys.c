@@ -212,8 +212,9 @@ static const struct subsys *find_subsys_flag_in_argv(int argc, char **argv)
 		if (!val) continue;
 		if (strcmp(val, "md") == 0) return &subsys_md;
 		if (strcmp(val, "ms") == 0) return &subsys_ms;
+		if (strcmp(val, "auto") == 0) return NULL;
 		fprintf(stderr,
-			"mdadm: --subsys=%s is not a known subsystem (use md or ms)\n",
+			"mdadm: --subsys=%s is not a known subsystem (use md, ms, or auto)\n",
 			val);
 		exit(2);
 	}
@@ -251,7 +252,7 @@ void subsys_select(int argc, char **argv)
 	/* 3. Env var. */
 	if (!chosen) {
 		const char *e = getenv("MDADM_SUBSYS");
-		if (e) {
+		if (e && strcmp(e, "auto") != 0) {
 			if (strcmp(e, "md") == 0) chosen = &subsys_md;
 			else if (strcmp(e, "ms") == 0) chosen = &subsys_ms;
 			else {
