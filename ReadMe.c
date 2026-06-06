@@ -170,6 +170,7 @@ struct option long_options[] = {
 	{"set-faulty", 0, 0, Fail},
 	{"replace", 0, 0, Replace},
 	{"with", 0, 0, With},
+	{"slot", 1, 0, Slot},
 	{"run", 0, 0, 'R'},
 	{"stop", 0, 0, 'S'},
 	{"readonly", 0, 0, 'o'},
@@ -442,6 +443,8 @@ char Help_manage[] =
 "                     : replacement completes, device will be marked faulty\n"
 "  --with             : Indicate which spare a previous '--replace' should\n"
 "                     : prefer to use\n"
+"  --slot         N   : with --add/--add-spare, place the device into raid\n"
+"                     : slot (role index) N instead of the first free slot\n"
 "  --run         -R   : start a partially built array\n"
 "  --stop        -S   : deactivate array, releasing all resources\n"
 "  --readonly    -o   : mark array as readonly\n"

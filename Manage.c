@@ -1833,6 +1833,7 @@ int move_spare(char *from_devname, char *to_devname, dev_t devid)
 	devlist.used = 0;
 	devlist.writemostly = FlagDefault;
 	devlist.failfast = FlagDefault;
+	devlist.slot = -1;
 	devlist.devname = devname;
 	sprintf(devname, "%d:%d", major(devid), minor(devid));
 

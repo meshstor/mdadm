@@ -1075,6 +1075,7 @@ static int array_try_spare(char *devname, int *dfdp, struct dev_policy *pol,
 			devlist.used = 0;
 			devlist.writemostly = FlagDefault;
 			devlist.failfast = FlagDefault;
+			devlist.slot = -1;
 			devlist.devname = chosen_devname;
 			sprintf(chosen_devname, "%d:%d", major(rdev),
 				minor(rdev));

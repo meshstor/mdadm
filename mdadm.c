@@ -186,6 +186,7 @@ int main(int argc, char *argv[])
 	struct supertype *ss = NULL;
 	enum flag_mode writemostly = FlagDefault;
 	enum flag_mode failfast = FlagDefault;
+	int slot = -1;
 	char *shortopt = short_opts;
 	int dosyslog = 0;
 	int rebuild_map = 0;
@@ -404,6 +405,8 @@ int main(int argc, char *argv[])
 					dv->writemostly = writemostly;
 					dv->failfast = failfast;
 					dv->used = 0;
+					dv->slot = slot;
+					slot = -1;	/* bind to this device only; not sticky */
 					dv->next = NULL;
 					*devlistend = dv;
 					devlistend = &dv->next;
@@ -461,6 +464,8 @@ int main(int argc, char *argv[])
 			dv->writemostly = writemostly;
 			dv->failfast = failfast;
 			dv->used = 0;
+			dv->slot = slot;
+			slot = -1;	/* bind to this device only; not sticky */
 			dv->next = NULL;
 			*devlistend = dv;
 			devlistend = &dv->next;
@@ -1033,6 +1038,12 @@ int main(int argc, char *argv[])
 			}
 			devmode = 'W';
 			continue;
+		case O(MANAGE, Slot):
+			if (parse_num(&slot, optarg) != 0 || slot < 0) {
+				pr_err("invalid --slot value: %s\n", optarg);
+				exit(2);
+			}
+			continue;
 		case O(INCREMENTAL,'R'):
 		case O(MANAGE,'R'):
 		case O(ASSEMBLE,'R'):
@@ -1233,6 +1244,7 @@ int main(int argc, char *argv[])
 			dv->devname = optarg;
 			dv->disposition = 'j';  /* WriteJournal */
 			dv->used = 0;
+			dv->slot = -1;
 			dv->next = NULL;
 			*devlistend = dv;
 			devlistend = &dv->next;
@@ -1267,6 +1279,12 @@ int main(int argc, char *argv[])
 				opt, map_num_s(modes, mode));
 		exit(2);
 
+	}
+
+	if (slot != -1) {
+		pr_err("--slot must come before the device it applies to, e.g. --add --slot %d /dev/...\n",
+		       slot);
+		exit(2);
 	}
 
 	/* When metadata is not specified using the -e option,

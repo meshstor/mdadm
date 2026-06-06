@@ -466,6 +466,7 @@ enum special_options {
 	Fail,
 	Replace,
 	With,
+	Slot,
 	MiscOpt,
 	WaitOpt,
 	ConfigFile,
@@ -678,6 +679,7 @@ struct mddev_dev {
 	enum flag_mode writemostly;
 	enum flag_mode failfast;
 	int used;		/* set when used */
+	int slot;		/* requested raid_disk for --add --slot; -1 if unset */
 	long long data_offset;
 	struct mddev_dev *next;
 };
