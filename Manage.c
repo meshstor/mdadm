@@ -1312,6 +1312,45 @@ abort:
 	return -1;
 }
 
+/* set_added_member_slot() - pin the role index of a just-added spare.
+ * Find the member matching @rdev, verify it is a non-faulty spare, and write
+ * its sysfs 'slot' (== raid_disk) so the post-add unfreeze rebuilds it into
+ * slot @slot.  Returns 0 on success, -1 on failure (message already printed).
+ */
+static int set_added_member_slot(int fd, unsigned long rdev, int slot,
+				 char *devname)
+{
+	struct mdinfo *mdi, *di;
+	int rv = -1;
+
+	mdi = sysfs_read(fd, NULL, GET_DEVS | GET_STATE);
+	if (!mdi || !mdi->devs) {
+		pr_err("cannot read member state of %s to set slot %d\n",
+		       devname, slot);
+		sysfs_free(mdi);
+		return -1;
+	}
+	for (di = mdi->devs; di; di = di->next)
+		if (di->disk.major == (int)major(rdev) &&
+		    di->disk.minor == (int)minor(rdev))
+			break;
+	if (!di)
+		pr_err("%s not found after add, cannot set slot %d\n",
+		       devname, slot);
+	else if (di->disk.state & (1 << MD_DISK_FAULTY))
+		pr_err("%s is faulty, cannot set slot %d\n", devname, slot);
+	else if (di->disk.raid_disk >= 0)
+		pr_err("%s is already active, cannot set slot %d\n",
+		       devname, slot);
+	else if (sysfs_set_num(mdi, di, "slot", slot))
+		pr_err("failed to set slot %d for %s: %s\n",
+		       slot, devname, strerror(errno));
+	else
+		rv = 0;
+	sysfs_free(mdi);
+	return rv;
+}
+
 /**
  * is_remove_safe() - Check if remove is safe.
  * @array: Array info.
@@ -1438,6 +1477,51 @@ int Manage_subdevs(char *devname, int fd,
 		pr_err("unsupport array - version %d.%d\n",
 			array.major_version, array.minor_version);
 		goto abort;
+	}
+
+	/* Validate any --slot requests up front, before freezing or adding. */
+	for (dv = devlist; dv; dv = dv->next) {
+		struct mdinfo *smdi, *sdi;
+		struct mddev_dev *dv2;
+
+		if (dv->slot < 0)
+			continue;
+		if (dv->disposition != 'a' && dv->disposition != 'S') {
+			pr_err("--slot is only valid with --add/--add-spare\n");
+			goto abort;
+		}
+		/* the same slot cannot be requested for two devices at once */
+		for (dv2 = devlist; dv2 != dv; dv2 = dv2->next)
+			if (dv2->slot == dv->slot) {
+				pr_err("--slot %d requested for more than one device\n",
+				       dv->slot);
+				goto abort;
+			}
+		if (tst->ss->external) {
+			pr_err("--slot is not supported for external metadata\n");
+			goto abort;
+		}
+		if (array.state & (1 << MD_SB_CLUSTERED)) {
+			pr_err("--slot is not supported for clustered arrays\n");
+			goto abort;
+		}
+		if (dv->slot >= array.raid_disks) {
+			pr_err("--slot %d is out of range; array %s has %d devices\n",
+			       dv->slot, devname, array.raid_disks);
+			goto abort;
+		}
+		/* refuse if the target slot is already occupied */
+		smdi = sysfs_read(fd, NULL, GET_DEVS | GET_STATE);
+		for (sdi = smdi ? smdi->devs : NULL; sdi; sdi = sdi->next)
+			if (sdi->disk.raid_disk == dv->slot)
+				break;
+		if (sdi) {
+			pr_err("--slot %d is already in use in %s\n",
+			       dv->slot, devname);
+			sysfs_free(smdi);
+			goto abort;
+		}
+		sysfs_free(smdi);
 	}
 
 	for (dv = devlist; dv; dv = dv->next) {
@@ -1645,6 +1729,10 @@ int Manage_subdevs(char *devname, int fd,
 				goto abort;
 			if (rv > 0)
 				count++;
+			if (rv > 0 && dv->slot >= 0 &&
+			    set_added_member_slot(fd, rdev, dv->slot,
+						  dv->devname) < 0)
+				goto abort;
 			break;
 
 		case 'r':
