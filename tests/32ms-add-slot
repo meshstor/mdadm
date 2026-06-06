@@ -1,0 +1,44 @@
+# Test: mdadm --add --slot N places a device into a chosen raid slot.
+#
+# The same 'slot' mechanism applies under --subsys=ms, but the sysfs path
+# differs there; this test exercises stock md so it runs in any environment
+# with the md driver and loop devices.
+set -e -u
+
+# 4-device raid10,n2 -> mirror pairs (0,1) (2,3)
+$mdadm -CR $md0 -l10 -n4 -pn2 $dev0 $dev1 $dev2 $dev3
+check wait
+check raid10
+
+# Free slot 1 (its mirror partner slot 0 stays, so a rebuild source exists)
+$mdadm $md0 --fail $dev1
+$mdadm $md0 --remove $dev1
+
+# Add a fresh spare pinned to slot 1
+$mdadm $md0 --add --slot 1 $dev4
+check wait
+
+# Assert the new member landed in slot 1 via sysfs
+mddev=$(basename $md0)            # e.g. md0
+memb=$(basename $dev4)            # e.g. loop4
+slotval=$(cat /sys/block/$mddev/md/dev-$memb/slot)
+if [ "$slotval" != "1" ]; then
+	die "expected $dev4 in slot 1, sysfs slot reads '$slotval'"
+fi
+
+# Array must be clean (all 4 in sync) after rebuild
+check nosync
+check raid10
+
+# Negative: pinning into an occupied slot (0 is active) must be refused
+if $mdadm $md0 --add --slot 0 $dev5 2>/dev/null; then
+	die "--add --slot 0 into an occupied slot should have failed"
+fi
+
+# Negative: out-of-range slot must be refused before touching the array
+if $mdadm $md0 --add --slot 9 $dev5 2>/dev/null; then
+	die "--add --slot 9 (out of range) should have failed"
+fi
+
+$mdadm -S $md0
+echo "32ms-add-slot: PASS"
