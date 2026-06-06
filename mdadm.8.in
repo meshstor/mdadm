@@ -1458,6 +1458,24 @@ will preferentially be used to replace the devices listed after
 These devices must already be spare devices in the array.
 
 .TP
+.BI "\-\-slot " N
+This modifier precedes the device it applies to and is only valid with
+.B \-\-add
+or
+.BR \-\-add\-spare .
+It places the added device into the given RAID slot (role index,
+.RB 0 " .\|.\& " raid_disks\-1 )
+rather than letting the kernel choose the first free slot.  The target
+slot must be empty, and the array must use native metadata (it is not
+supported for external or clustered arrays).  For example:
+.IP
+.B mdadm /dev/md0 \-\-add \-\-slot 3 /dev/sdb1
+.IP
+adds
+.B /dev/sdb1
+as a spare and rebuilds it into slot 3.
+
+.TP
 .BR \-\-write\-mostly
 Subsequent devices that are added or re\-added will have the 'write-mostly'
 flag set.  This is only valid for RAID1 and means that the 'md' driver
