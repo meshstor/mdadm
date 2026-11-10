@@ -326,14 +326,32 @@ release of
 .IR mdadm .
 
 .TP
-.B bbl=no
+.B bbl=yes
 By default,
 .I mdadm
-will reserve space for a bad block list (bbl) on all devices
-included in or added to any array that supports them.  Setting
+writes no bad block list (bbl) to a device that it includes in or
+adds to an array, so
+.I md
+fails a device on which it cannot read or write a block rather than
+recording the block and keeping the device.  This differs from
+upstream
+.IR mdadm ,
+which writes a list by default.  Setting
+.B bbl=yes
+will reserve space for a bad block list on all devices included in or
+added to any array that supports them.
 .B bbl=no
-will prevent this, so newly added devices will not have a bad
-block log.
+states the default.
+
+.B \-\-config
+is not accepted in Manage mode, so
+.B \-\-add
+takes this setting from the default configuration file only.  A list
+can be added to or removed from the devices of an existing array with
+.B \-\-update=bbl
+or
+.B \-\-update=no\-bbl
+when the array is assembled.
 .RE
 
 .TP

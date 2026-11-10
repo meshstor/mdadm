@@ -2,23 +2,35 @@
 # create a raid1 with a drive and set badblocks for the drive.
 # add a new drive does not cause an error.
 #
+# mdadm writes no bad block log unless the configuration asks for one, so
+# the array is created with 'CREATE bbl=yes'.  --add takes no --config:
+# the added drive gets no log, md cannot record the first drive's bad
+# range on it and ends the recovery there.  So the check is that the add
+# itself is accepted, which the first drive's bad-blocks flag, copied to
+# the new drive, used to prevent.
+#
 
 # create raid1
-mdadm -CR $md0 -l1 -n2 -e1.0 $dev1 missing
+echo "CREATE bbl=yes" > $config
+mdadm -CR $md0 -l1 -n2 -e1.0 --config=$config $dev1 missing
+rm -f $config
 testdev $md0 1 $mdsize1a 64
 sleep 3
 
 # set badblocks for the drive
 dev1_name=$(basename $dev1)
-echo "100 100" > /sys/block/md0/md/dev-$dev1_name/bad_blocks
+echo "100 100" > /sys/block/md0/md/dev-$dev1_name/bad_blocks ||
+	die "cannot set bad blocks on $dev1"
 echo "write_error" > /sys/block/md0/md/dev-$dev1_name/state
 
 # write badblocks to metadata
 dd if=/dev/zero of=$md0 bs=512 count=200 oflag=direct
+mdadm -E $dev1 | grep -q 'bad blocks present' ||
+	die "$dev1 does not carry the bad-blocks flag"
 
-# re-add and recovery
-mdadm $md0 -a $dev2
-check recovery
+# add a new drive
+mdadm $md0 -a $dev2 || die "add of $dev2 failed"
+[ -d /sys/block/md0/md/dev-$(basename $dev2) ] ||
+	die "$dev2 is not a member after the add"
 
 mdadm -S $md0
-

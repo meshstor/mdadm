@@ -2212,10 +2212,19 @@ setting.
 Space for a bitmap will be reserved so that one can be added later with
 .BR "\-\-grow \-\-bitmap=internal" .
 
-If the metadata type supports it (currently only 1.x and IMSM metadata),
-space will be allocated to store a bad block list.  This allows a modest
+With 1.x metadata no space is allocated to store a bad block list
+unless
+.B bbl=yes
+is given on the
+.B CREATE
+line of
+.BR mdadm.conf (5).
+This differs from upstream
+.IR mdadm ,
+which allocates it by default.  A bad block list allows a modest
 number of bad blocks to be recorded, allowing the drive to remain in
-service while only partially functional.
+service while only partially functional.  Without one a drive on which
+a block cannot be read or written is failed.
 
 When creating an array within a
 .B CONTAINER

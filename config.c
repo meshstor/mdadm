@@ -373,7 +373,7 @@ struct mddev_dev *load_containers(void)
 
 struct createinfo createinfo = {
 	.names = 0, /* By default, stick with numbered md devices. */
-	.bblist = 1, /* Use a bad block list by default */
+	.bblist = 0, /* No bad block list unless CREATE bbl=yes asks for one */
 #ifdef DEBIAN
 	.gid = 6, /* disk */
 	.mode = 0660,

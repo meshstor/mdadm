@@ -1,0 +1,109 @@
+# Test: a member gets a bad block log only when the configuration asks for
+# one.
+#
+# With a log, md records a block it could not read or write and keeps the
+# member; a rebuild that could not read its source records the range on the
+# target and still finishes.  Without a log md fails the member instead.
+# This fork writes no log by default (createinfo.bblist in config.c), for
+# --create and for every form of --add.  'CREATE bbl=yes' in the
+# configuration file brings the log back.
+#
+# --examine prints a 'Bad Block Log' line only for a member that has one.
+# The kernel takes a write to a member's sysfs 'bad_blocks' only when the
+# member has a log, so that write is the check of what md itself loaded.
+#
+# The harness sources this script inside an 'if' condition, where bash
+# ignores errexit, so every command that must succeed carries '|| die'.
+#
+# Not covered: 'CREATE bbl=yes' for --add.  Manage mode takes no --config,
+# so --add reads the system configuration file only, and a test must not
+# edit that.
+set -u
+
+mddev=$(basename $md0)
+sysmd=/sys/block/$mddev/md
+
+has_log() {
+	$mdadm --examine $1 > /dev/null || die "cannot examine $1"
+	$mdadm --examine $1 | grep -q 'Bad Block Log'
+}
+expect_no_log() {
+	if has_log $1; then
+		die "$2: $1 has a bad block log"
+	fi
+}
+expect_log() {
+	has_log $1 || die "$2: $1 has no bad block log"
+}
+md_takes_bad_block() {
+	echo "64 8" > $sysmd/dev-$(basename $1)/bad_blocks 2> /dev/null
+}
+
+# The test is void if the host's configuration file sets bbl itself.
+for f in /etc/mdadm.conf /etc/mdadm.conf.d/*.conf /etc/mdadm/mdadm.conf \
+	 /etc/mdadm/mdadm.conf.d/*.conf; do
+	[ -f "$f" ] || continue
+	if grep -Eiq '^[[:space:]]*CREATE.*bbl=' "$f"; then
+		echo "SKIP: $f sets bbl on its CREATE line"
+		exit 3
+	fi
+done
+
+# (a) --create, each 1.x superblock position.
+for meta in 1.0 1.1 1.2; do
+	$mdadm -CR $md0 -e$meta -l1 -n2 --assume-clean $dev0 $dev1 ||
+		die "create with -e$meta failed"
+	expect_no_log $dev0 "create -e$meta"
+	expect_no_log $dev1 "create -e$meta"
+	if md_takes_bad_block $dev0; then
+		die "create -e$meta: md recorded a bad block on $dev0, so it has a log"
+	fi
+	$mdadm -S $md0 || die "stop failed"
+	$mdadm --zero-superblock $dev0 $dev1 || die "zero failed"
+done
+
+# raid10 n2 x4: mirror columns are slots (0,1) and (2,3).
+$mdadm -CR $md0 -l10 -n4 -pn2 $dev0 $dev1 $dev2 $dev3 || die "raid10 create failed"
+check wait
+for d in $dev0 $dev1 $dev2 $dev3; do
+	expect_no_log $d "raid10 create"
+done
+
+# (b) --add.
+$mdadm $md0 --fail $dev1 || die "fail of $dev1 failed"
+$mdadm $md0 --remove $dev1 || die "remove of $dev1 failed"
+$mdadm $md0 --add $dev4 || die "add of $dev4 failed"
+expect_no_log $dev4 "--add"
+check wait
+
+# (c) --add --slot.
+$mdadm $md0 --fail $dev2 || die "fail of $dev2 failed"
+$mdadm $md0 --remove $dev2 || die "remove of $dev2 failed"
+$mdadm $md0 --add --slot 2 $dev5 || die "pinned add of $dev5 failed"
+expect_no_log $dev5 "--add --slot"
+check wait
+
+# (d) --replace --with of a device that is not a member.
+$mdadm $md0 --replace $dev3 --with $dev6 || die "--with of $dev6 failed"
+expect_no_log $dev6 "--replace --with"
+check wait
+if md_takes_bad_block $dev6; then
+	die "--replace --with: md recorded a bad block on $dev6, so it has a log"
+fi
+check raid10
+$mdadm -S $md0 || die "stop failed"
+$mdadm --zero-superblock $dev0 $dev4 $dev5 $dev6 || die "zero failed"
+
+# (e) 'CREATE bbl=yes' brings the log back, and md uses it.  This is also
+# the control for md_takes_bad_block: the write is refused above because
+# there is no log, not because the kernel never takes it.
+echo "CREATE bbl=yes" > $config || die "cannot write $config"
+$mdadm -CR $md0 --config=$config -l1 -n2 --assume-clean $dev0 $dev1 ||
+	die "create with bbl=yes failed"
+expect_log $dev0 "CREATE bbl=yes"
+expect_log $dev1 "CREATE bbl=yes"
+md_takes_bad_block $dev0 || die "CREATE bbl=yes: md refused a bad block on $dev0"
+$mdadm -S $md0 || die "stop failed"
+rm -f $config
+
+echo "34no-bbl-default: PASS"
