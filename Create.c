@@ -1139,9 +1139,12 @@ int Create(struct supertype *st, struct mddev_ident *ident, int subdevs,
 		if (name) {
 			size_t plen = strlen(current_subsys->devnm_prefix);
 			name++;
-			if (strncmp(name, "md_", 3) == 0 &&
-			    strlen(name) > 3 && (name - chosen_name) == 5 /* /dev/ */)
-				name += 3;
+			if (strncmp(name, current_subsys->devnm_prefix,
+				    plen) == 0 &&
+			    name[plen] == '_' &&
+			    strlen(name) > plen + 1 &&
+			    (name - chosen_name) == 5 /* /dev/ */)
+				name += plen + 1;
 			else if (strncmp(name, current_subsys->devnm_prefix,
 					 plen) == 0 &&
 				 strlen(name) > plen &&
