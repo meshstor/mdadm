@@ -856,7 +856,8 @@ int Manage_add(int fd, int tfd, struct mddev_dev *dv,
 			}
 		/* FIXME this is a bad test to be using */
 		if (!tst->sb && (dv->disposition != 'a' &&
-				 dv->disposition != 'S')) {
+				 dv->disposition != 'S' &&
+				 dv->disposition != 'w')) {
 			/* we are re-adding a device to a
 			 * completely dead array - have to depend
 			 * on kernel to check
@@ -884,7 +885,8 @@ int Manage_add(int fd, int tfd, struct mddev_dev *dv,
 		 * simply re-add it.
 		 */
 
-		if (array->not_persistent == 0 && dv->disposition != 'S') {
+		if (array->not_persistent == 0 && dv->disposition != 'S' &&
+		    dv->disposition != 'w') {
 			int rv = 0;
 
 			dev_st = dup_super(tst);
@@ -1277,7 +1279,10 @@ int Manage_with(struct supertype *tst, int fd, struct mddev_dev *dv,
 		unsigned long rdev, int verbose, char *devname)
 {
 	struct mdinfo *mdi, *di;
-	/* try to set 'slot' for 'rdev' in 'fd' to 'dv->used' */
+	/* try to set 'slot' for 'rdev' in 'fd' to 'dv->used'.
+	 * Returns 1 if set, 0 if 'rdev' is not a member, -1 on error
+	 * (message printed).
+	 */
 	mdi = sysfs_read(fd, NULL, GET_DEVS|GET_STATE);
 	if (!mdi || !mdi->devs) {
 		pr_err("Cannot find status of %s to enable replacement - strange\n",
@@ -1313,8 +1318,10 @@ int Manage_with(struct supertype *tst, int fd, struct mddev_dev *dv,
 		sysfs_free(mdi);
 		return 1;
 	}
-	pr_err("%s not found in %s so cannot make it preferred replacement\n",
-	       dv->devname, devname);
+	if (verbose > 0)
+		pr_err("%s is not a member of %s\n", dv->devname, devname);
+	sysfs_free(mdi);
+	return 0;
 abort:
 	sysfs_free(mdi);
 	return -1;
@@ -1357,6 +1364,24 @@ static int set_added_member_slot(int fd, unsigned long rdev, int slot,
 		rv = 0;
 	sysfs_free(mdi);
 	return rv;
+}
+
+/* remove_unpinned_member() - take out a just-added member whose slot could
+ * not be set.  The device is in the array with no slot.  Left there, md seats
+ * it into the lowest free slot of any column, or as the replacement of the
+ * lowest slot that wants one, as soon as the array unfreezes (or the resync
+ * ends), so take it out again while it is still unpositioned:
+ * HOT_REMOVE_DISK kicks an rdev with raid_disk < 0 directly, frozen or not.
+ */
+static void remove_unpinned_member(int fd, unsigned long rdev, char *member,
+				   char *array)
+{
+	if (ioctl(fd, HOT_REMOVE_DISK, rdev) == 0)
+		pr_err("removed %s from %s again: its slot could not be set\n",
+		       member, array);
+	else
+		pr_err("failed to remove %s from %s after its slot could not be set: %s\n",
+		       member, array, strerror(errno));
 }
 
 /**
@@ -1755,18 +1780,8 @@ int Manage_subdevs(char *devname, int fd,
 			if (rv > 0 && dv->slot >= 0 &&
 			    set_added_member_slot(fd, rdev, dv->slot,
 						  dv->devname) < 0) {
-				/* The device is in the array with no slot.  Left
-				 * there, md seats it into the lowest free slot of any
-				 * column as soon as the array unfreezes (or the
-				 * resync ends), so take it out again while it is
-				 * still unpositioned: HOT_REMOVE_DISK kicks an rdev
-				 * with raid_disk < 0 directly, frozen or not. */
-				if (ioctl(fd, HOT_REMOVE_DISK, (unsigned long)rdev) == 0)
-					pr_err("removed %s from %s again: its slot could not be set\n",
-					       dv->devname, devname);
-				else
-					pr_err("failed to remove %s from %s after its slot could not be set: %s\n",
-					       dv->devname, devname, strerror(errno));
+				remove_unpinned_member(fd, rdev, dv->devname,
+						       devname);
 				goto abort;
 			}
 			break;
@@ -1840,6 +1855,61 @@ int Manage_subdevs(char *devname, int fd,
 			goto abort;
 		case 'w': /* --with device which was matched */
 			rv = Manage_with(tst, fd, dv, rdev, verbose, devname);
+			/* Not a member: add it as a spare under the freeze 'R'
+			 * took, so md cannot seat it before the slot write.
+			 * On a refused pin it is still unpositioned and
+			 * HOT_REMOVE_DISK takes it out again.
+			 */
+			if (rv == 0) {
+				struct mdinfo *wmdi, *wdi;
+				int at_slot = 0;
+
+				if (frozen != 1) {
+					pr_err("Cannot add %s as a replacement: %s is syncing or frozen by another operation\n",
+					       dv->devname, devname);
+					goto abort;
+				}
+				if (array.state & (1 << MD_SB_CLUSTERED)) {
+					pr_err("--with cannot add %s: not supported for clustered arrays\n",
+					       dv->devname);
+					goto abort;
+				}
+				/* GET_DEVS_ALL: a replacement whose block link
+				 * is gone still shares OLD's slot.
+				 */
+				wmdi = sysfs_read(fd, NULL, GET_DEVS | GET_DEVS_ALL);
+				for (wdi = wmdi ? wmdi->devs : NULL; wdi; wdi = wdi->next)
+					if (wdi->disk.raid_disk == dv->used)
+						at_slot++;
+				sysfs_free(wmdi);
+				if (at_slot > 1) {
+					pr_err("device %d in %s already has a replacement; remove it before --with %s\n",
+					       dv->used, devname, dv->devname);
+					goto abort;
+				}
+				tfd = dev_open(dv->devname, O_RDONLY|O_EXCL);
+				if (tfd >= 0) {
+					close_fd(&tfd);
+					tfd = dev_open(dv->devname, O_RDONLY);
+				}
+				if (tfd < 0) {
+					pr_err("Cannot open %s: %s\n",
+					       dv->devname, strerror(errno));
+					goto abort;
+				}
+				rv = Manage_add(fd, tfd, dv, tst, &array, force,
+						verbose, devname, update, rdev,
+						array_size, -1);
+				close_fd(&tfd);
+				if (rv != 1)
+					goto abort;
+				rv = Manage_with(tst, fd, dv, rdev, verbose, devname);
+				if (rv != 1) {
+					remove_unpinned_member(fd, rdev, dv->devname,
+							       devname);
+					goto abort;
+				}
+			}
 			if (rv < 0)
 				goto abort;
 			dv->unmark_rdev = 0;

@@ -12,9 +12,11 @@
 # The harness sources this script inside an 'if' condition, where bash
 # ignores errexit, so every command that must succeed carries '|| die'.
 #
-# Not covered: the cleanup after a slot write the kernel refuses (NEW is
-# removed again).  Every refusal below happens before NEW is added; no
-# deterministic trigger for a kernel-side refusal is known.
+# Not covered: the cleanup after a slot write the kernel refuses after
+# mdadm itself added NEW (NEW is removed again).  Every refusal of a
+# non-member below happens before NEW is added; no deterministic trigger
+# for a kernel-side refusal at that point is known.  Case (g), a kernel
+# refusal of a legacy spare's slot write, is covered.
 set -u
 
 mddev=$(basename $md0)
@@ -23,7 +25,10 @@ sysmd=/sys/block/$mddev/md
 slot_of()   { cat $sysmd/dev-$(basename $1)/slot; }
 state_of()  { cat $sysmd/dev-$(basename $1)/state; }
 is_member() { [ -d $sysmd/dev-$(basename $1) ]; }
-wants_replacement() { state_of $1 | grep -q want_replacement; }
+wants_replacement() {
+	is_member $1 || die "$1 is not a member"
+	state_of $1 | grep -q want_replacement
+}
 set_action() { echo $1 > $sysmd/sync_action || die "cannot write $1 to sync_action"; }
 throttle()   { echo 1000 > $sysmd/sync_speed_max || die "cannot set sync_speed_max"; }
 unthrottle() { echo system > $sysmd/sync_speed_max || die "cannot reset sync_speed_max"; }
@@ -34,7 +39,7 @@ wait_recovery_shown() {
 		grep -Eq 'recovery *=' /proc/mdstat && return 0
 		sleep 0.1
 	done
-	die "sync_speed_max did not throttle the copy; see the design doc, section 7"
+	die "sync_speed_max did not throttle the copy: the kernel ignored it, drop the throttled assertions"
 }
 
 $mdadm -CR $md0 -l10 -n4 -pn2 $dev0 $dev1 $dev2 $dev3 || die "create failed"
@@ -57,6 +62,121 @@ fi
 set_action idle
 unthrottle
 check wait
+
+# (e) Legacy spare, success path unchanged: $dev4 is an idle spare.
+$mdadm $md0 --replace $dev1 --with $dev4 || die "legacy --with failed"
+[ "$(slot_of $dev4)" = "1" ] || die "legacy --with: expected $dev4 in slot 1, got $(slot_of $dev4)"
+check wait
+state_of $dev1 | grep -q faulty || die "$dev1 should be faulty after the replacement"
+[ "$(slot_of $dev4)" = "1" ] || die "$dev4 should hold slot 1 after the replacement"
+
+# (e1) NEW is a faulty member: refused, and the request on $dev2 is cleared.
+if $mdadm $md0 --replace $dev2 --with $dev1; then
+	die "--with of a faulty member should have failed"
+fi
+if wants_replacement $dev2; then
+	die "$dev2 still wants replacement after --with of a faulty member"
+fi
+$mdadm $md0 --remove $dev1 || die "remove of $dev1 failed"
+$mdadm --zero-superblock $dev1 || die "zero of $dev1 failed"
+
+# (e2) NEW is an active member: refused, and the request on $dev2 is cleared.
+if $mdadm $md0 --replace $dev2 --with $dev0; then
+	die "--with of an active member should have failed"
+fi
+if wants_replacement $dev2; then
+	die "$dev2 still wants replacement after --with of an active member"
+fi
+
+# (a) Non-member pin, throttled so the replacement state is observable.
+# Members: slot0 $dev0, slot1 $dev4, slot2 $dev2, slot3 $dev3; $dev1 is free.
+throttle
+$mdadm $md0 --replace $dev2 --with $dev1 || die "--with of a non-member failed"
+[ "$(slot_of $dev1)" = "2" ] || die "expected $dev1 pinned to slot 2, got $(slot_of $dev1)"
+wait_recovery_shown
+state_of $dev1 | grep -Eq '(^|,)replacement' || die "$dev1 should be a replacement"
+wants_replacement $dev2 || die "$dev2 should want replacement"
+
+# (d) OLD already has a replacement: refused before anything is added, and
+# the request on $dev2 was not set by this call, so it is kept.
+if $mdadm $md0 --replace $dev2 --with $dev5; then
+	die "--with onto a slot that already has a replacement should have failed"
+fi
+if is_member $dev5; then
+	die "$dev5 must not have been added"
+fi
+if $mdadm --examine $dev5 >/dev/null 2>&1; then
+	die "superblock written to $dev5"
+fi
+wants_replacement $dev2 || die "$dev2 lost its replacement request"
+unthrottle
+check wait
+state_of $dev2 | grep -q faulty || die "$dev2 should be faulty after the replacement"
+state_of $dev1 | grep -q in_sync || die "$dev1 should be in sync"
+[ "$(slot_of $dev1)" = "2" ] || die "$dev1 should hold slot 2 after the replacement"
+check nosync
+check raid10
+$mdadm $md0 --remove $dev2 || die "remove of $dev2 failed"
+$mdadm --zero-superblock $dev2 || die "zero of $dev2 failed"
+
+# (c) Not frozen by this call (a foreign freeze): nothing is added, the
+# request this call set on $dev3 is cleared, the foreign freeze is kept.
+set_action frozen
+if $mdadm $md0 --replace $dev3 --with $dev2; then
+	die "--with of a non-member on a foreign-frozen array should have failed"
+fi
+if is_member $dev2; then
+	die "$dev2 must not have been added"
+fi
+if $mdadm --examine $dev2 >/dev/null 2>&1; then
+	die "superblock written to $dev2"
+fi
+if wants_replacement $dev3; then
+	die "$dev3 still wants replacement after the refused --with"
+fi
+[ "$(cat $sysmd/sync_action)" = "frozen" ] || die "the foreign freeze was released"
+set_action idle
+
+# (b) A lower slot in the other column wants replacement; an unpinned spare
+# would serve it.  The pin must land on $dev3's slot 3, never on slot 0.
+echo want_replacement > $sysmd/dev-$(basename $dev0)/state || die "cannot mark $dev0"
+$mdadm $md0 --replace $dev3 --with $dev2 || die "--with of a non-member failed"
+[ "$(slot_of $dev2)" = "3" ] || die "expected $dev2 pinned to slot 3, got $(slot_of $dev2)"
+echo -want_replacement > $sysmd/dev-$(basename $dev0)/state || die "cannot unmark $dev0"
+check wait
+state_of $dev3 | grep -q faulty || die "$dev3 should be faulty after the replacement"
+$mdadm $md0 --remove $dev3 || die "remove of $dev3 failed"
+$mdadm --zero-superblock $dev3 || die "zero of $dev3 failed"
+
+# (f) Two pairs; the second --with fails after the first pair was served.
+# The walk clears only the unserved request ($dev4's) and keeps $dev0's.
+# The missing device fails in the device-open preamble, after the first
+# pair's add and pin ran; that is enough to exercise the walk.
+# Members: slot0 $dev0, slot1 $dev4, slot2 $dev1, slot3 $dev2; $dev3 is free.
+throttle
+if $mdadm $md0 --replace $dev0 $dev4 --with $dev3 /dev/no-such-device; then
+	die "second --with of a missing device should have failed"
+fi
+[ "$(slot_of $dev3)" = "0" ] || die "first pair: expected $dev3 pinned to slot 0, got $(slot_of $dev3)"
+wait_recovery_shown
+wants_replacement $dev0 || die "$dev0's served request must be kept"
+if wants_replacement $dev4; then
+	die "$dev4's unserved request must be cleared"
+fi
+unthrottle
+check wait
+state_of $dev0 | grep -q faulty || die "$dev0 should be faulty after the replacement"
+check raid10
+$mdadm -S $md0 || die "stop failed"
+
+# (h) raid1: the pinned replacement path is level-agnostic.
+$mdadm --zero-superblock $dev0 $dev1 $dev2 $dev3 $dev4 || die "zero failed"
+$mdadm -CR $md0 -l1 -n2 $dev0 $dev1 || die "raid1 create failed"
+check wait
+$mdadm $md0 --replace $dev1 --with $dev2 || die "raid1 --with of a non-member failed"
+[ "$(slot_of $dev2)" = "1" ] || die "raid1: expected $dev2 pinned to slot 1, got $(slot_of $dev2)"
+check wait
+state_of $dev1 | grep -q faulty || die "raid1: $dev1 should be faulty after the replacement"
 
 $mdadm -S $md0 || die "stop failed"
 echo "33replace-with-add: PASS"

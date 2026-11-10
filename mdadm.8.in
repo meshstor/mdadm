@@ -1483,7 +1483,31 @@ devices.  The devices listed after
 .B \-\-with
 will preferentially be used to replace the devices listed after
 .BR \-\-replace .
-These devices must already be spare devices in the array.
+A device that is already a spare in the array is used as before.  A device
+that is not yet a member is added as with
+.B \-\-add
+(its contents are overwritten by a new superblock) and made the replacement
+in the same operation, so the kernel can never seat it anywhere else.  This
+requires the array to be idle or recovering, so that
+.B mdadm
+can freeze it for the duration; it is refused for clustered arrays and for
+a device whose replacement is already in progress.
+.B \-\-write\-mostly
+and
+.B \-\-failfast
+apply to a device added this way, as for
+.BR \-\-add ,
+and are ignored for a device that is already a spare.
+If the operation fails, a replacement request that this command set is
+cleared again.  Should
+.B mdadm
+be killed between adding the device and making it the replacement, the array
+stays frozen with the device as an idle spare: run the same command again,
+which uses the spare, then write
+.B idle
+to the array's
+.B sync_action
+attribute by hand.
 
 .TP
 .BI "\-\-slot " N
