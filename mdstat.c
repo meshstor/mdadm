@@ -197,6 +197,8 @@ struct mdstat_ent *mdstat_read(int hold, int start)
 {
 	FILE *f;
 	struct mdstat_ent *all, *rv, **end, **insert_here;
+	const char *prefix = current_subsys->devnm_prefix;
+	size_t plen = strlen(prefix);
 	char *line;
 	int fd;
 
@@ -235,9 +237,9 @@ struct mdstat_ent *mdstat_read(int hold, int start)
 		if (strcmp(line, "unused") == 0)
 			continue;
 		insert_here = NULL;
-		/* Better be an md line.. */
-		if (strncmp(line, "md", 2)!= 0 || strlen(line) >= 32 ||
-		    (line[2] != '_' && !isdigit(line[2])))
+		/* Better be an array line of the active subsystem.. */
+		if (strncmp(line, prefix, plen) != 0 || strlen(line) >= 32 ||
+		    (line[plen] != '_' && !isdigit((unsigned char)line[plen])))
 			continue;
 		strcpy(devnm, line);
 
@@ -279,8 +281,8 @@ struct mdstat_ent *mdstat_read(int hold, int start)
 				char *ep = strchr(w, '[');
 				ent->devcnt +=
 					add_member_devname(&ent->members, w);
-				if (ep && strncmp(w, "md", 2) == 0) {
-					/* This has an md device as a component.
+				if (ep && strncmp(w, prefix, plen) == 0) {
+					/* This has an array device as a component.
 					 * If that device is already in the
 					 * list, make sure we insert before
 					 * there.

@@ -257,12 +257,24 @@ raid6check : raid6check.o mdadm.h $(CHECK_OBJS)
 test-subsys: test-subsys.c subsys.c subsys.h
 	$(CC) $(CWFLAGS) $(CXFLAGS) -o $@ test-subsys.c subsys.c
 
+# mdstat_read() needs most of mdadm (conf_line, dlink, xmalloc, ...), so
+# link everything except mdadm.o's main().
+test-mdstat: test-mdstat.c mdstat.h subsys.h $(filter-out mdadm.o,$(OBJS))
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ test-mdstat.c $(filter-out mdadm.o,$(OBJS)) $(LDLIBS)
+
+# One-shot check after an upstream rebase: build and run the unit tests
+# and the hardcoded-md lint.
+unit-tests: test-subsys test-mdstat check-no-hardcoded-md-paths
+	./test-subsys
+	./test-mdstat
+
 # Lint: no hardcoded "/proc/mdstat", "/dev/md", or "/sys/block/.../md/"
-# string literals outside subsys.c, mdmon (out-of-scope), and the
+# string literals, and no str[n]cmp() against a literal "md" or "md_..."
+# device-name prefix, outside subsys.c, mdmon (out-of-scope), and the
 # kernel UAPI headers. Guards against future upstream rebases
 # reintroducing literals that bypass the subsys abstraction.
 check-no-hardcoded-md-paths:
-	@hits=$$(grep -nE '"/proc/mdstat"|"/sys/block/%s/md/' \
+	@hits=$$(grep -nE '"/proc/mdstat"|"/sys/block/%s/md/|strn?cmp\([^,]*, *"md[_"]' \
 		--include='*.c' --include='*.h' \
 		$$(ls *.c *.h | grep -v -E '^(subsys|mdmon|monitor|managemon|test-subsys|md_u|md_p)\.[ch]$$') \
 		2>/dev/null) ; \
@@ -362,7 +374,8 @@ clean :
 	rm -f mdadm mdmon $(OBJS) $(MON_OBJS) $(STATICOBJS) core *.man \
 	mdadm.static *.orig *.porig *.rej *.alt merge_file_* \
 	mdadm.Os mdadm.O2 mdmon.O2 swap_super init.cpio.gz \
-	raid6check raid6check.o mdmon mdadm.8
+	raid6check raid6check.o mdmon mdadm.8 \
+	test-subsys test-mdstat
 	rm -rf cov-int
 
 dist : clean

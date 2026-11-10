@@ -42,6 +42,14 @@ fi
 # Detail
 $mdadm --subsys=ms -D $ms0 || { echo "detail failed"; exit 1; }
 
+# --scan modes enumerate arrays through /proc/msstat; they must see ms0
+if ! $mdadm --subsys=ms -Ds | grep -qw "^ARRAY $ms0" ; then
+	echo "FAIL: --detail --scan does not list $ms0"
+	$mdadm --subsys=ms -Ds || true
+	$mdadm --subsys=ms -S $ms0 || true
+	exit 1
+fi
+
 # Examine the components
 $mdadm -E $dev0 || { echo "examine $dev0 failed"; exit 1; }
 $mdadm -E $dev1 || { echo "examine $dev1 failed"; exit 1; }
@@ -52,7 +60,16 @@ $mdadm --subsys=ms -S $ms0 || { echo "stop failed"; exit 1; }
 # Assemble back
 $mdadm --subsys=ms -A $ms0 $dev0 $dev1 || { echo "assemble failed"; exit 1; }
 
-# Final stop
-$mdadm --subsys=ms -S $ms0 || true
+# Final stop via --stop --scan, which must find ms0 through /proc/msstat
+$mdadm --subsys=ms -Ss || {
+	echo "FAIL: --stop --scan failed"
+	$mdadm --subsys=ms -S $ms0 || true
+	exit 1
+}
+if grep -q '^ms0' /proc/msstat ; then
+	echo "FAIL: --stop --scan left ms0 running"
+	$mdadm --subsys=ms -S $ms0 || true
+	exit 1
+fi
 
 echo "27ms-basic: PASS"
