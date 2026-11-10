@@ -89,6 +89,43 @@ int subsys_parse_proc_devices(const char *content, int *md_major,
 	return 0;
 }
 
+/* True when devnm is exactly "<prefix><digits>": the prefix, at least
+ * one digit, and nothing after the digits. */
+static bool devnm_is_numbered(const char *devnm, const char *prefix)
+{
+	size_t plen = strlen(prefix);
+
+	if (strncmp(devnm, prefix, plen) != 0)
+		return false;
+	devnm += plen;
+	if (!isdigit((unsigned char)*devnm))
+		return false;
+	while (isdigit((unsigned char)*devnm))
+		devnm++;
+	return *devnm == '\0';
+}
+
+const struct subsys *subsys_for_devnm(const char *devnm)
+{
+	if (!devnm || !*devnm)
+		return NULL;
+	struct subsys *cs[2] = { &subsys_md, &subsys_ms };
+	for (int i = 0; i < 2; i++) {
+		struct subsys *s = cs[i];
+		if (s->devnm_part_prefix &&
+		    devnm_is_numbered(devnm, s->devnm_part_prefix))
+			return s;
+		if (devnm_is_numbered(devnm, s->devnm_prefix))
+			return s;
+	}
+	return NULL;
+}
+
+/* Classify a command-line token by the device name it spells, in full:
+ * "[/dev/]<prefix>N", "[/dev/]<part_prefix>N" or "[/dev/]<prefix>/<name>".
+ * Anything with extra characters after the number (a partition such as
+ * md0p1, or a value that merely starts with a prefix such as md0.bak or
+ * ms1@example.com) is not a device name and yields NULL. */
 const struct subsys *path_to_subsys(const char *path)
 {
 	if (!path || !*path)
@@ -106,46 +143,13 @@ const struct subsys *path_to_subsys(const char *path)
 		const struct subsys *s = candidates[i];
 		size_t plen = strlen(s->devnm_prefix);
 
-		/* Named-device dir: "<devnm_prefix>/<name>" */
+		/* Named-device dir: "<devnm_prefix>/<name>", one component */
 		if (strncmp(p, s->devnm_prefix, plen) == 0 &&
-		    p[plen] == '/' && p[plen + 1] != '\0')
-			return s;
-
-		/* Partitionable: "md_dN" (md only) */
-		if (s->devnm_part_prefix) {
-			size_t pplen = strlen(s->devnm_part_prefix);
-			if (strncmp(p, s->devnm_part_prefix, pplen) == 0 &&
-			    isdigit((unsigned char)p[pplen]))
-				return s;
-		}
-
-		/* Numbered: "<devnm_prefix>N" */
-		if (strncmp(p, s->devnm_prefix, plen) == 0 &&
-		    isdigit((unsigned char)p[plen]))
+		    p[plen] == '/' && p[plen + 1] != '\0' &&
+		    strchr(p + plen + 1, '/') == NULL)
 			return s;
 	}
-	return NULL;
-}
-
-const struct subsys *subsys_for_devnm(const char *devnm)
-{
-	if (!devnm || !*devnm)
-		return NULL;
-	struct subsys *cs[2] = { &subsys_md, &subsys_ms };
-	for (int i = 0; i < 2; i++) {
-		struct subsys *s = cs[i];
-		size_t plen = strlen(s->devnm_prefix);
-		if (s->devnm_part_prefix) {
-			size_t pplen = strlen(s->devnm_part_prefix);
-			if (strncmp(devnm, s->devnm_part_prefix, pplen) == 0 &&
-			    isdigit((unsigned char)devnm[pplen]))
-				return s;
-		}
-		if (strncmp(devnm, s->devnm_prefix, plen) == 0 &&
-		    isdigit((unsigned char)devnm[plen]))
-			return s;
-	}
-	return NULL;
+	return subsys_for_devnm(p);
 }
 
 const struct subsys *subsys_for_major(unsigned int major)

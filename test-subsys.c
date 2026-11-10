@@ -98,6 +98,20 @@ static void test_path_to_subsys(void)
 		{"/dev/mdfoo",        NULL},
 		{"",                  NULL},
 		{"/dev/",             NULL},
+		/* whole-token anchoring: a device name is the entire token */
+		{"ms1@example.com",   NULL},
+		{"md1host",           NULL},
+		{"md0.bak",           NULL},
+		{"ms0-backup",        NULL},
+		{"/dev/md0.bak",      NULL},
+		{"/dev/md0p1",        NULL},   /* partition, not an array */
+		{"/dev/md_d0p1",      NULL},
+		{"md0/",              NULL},
+		{"/dev/md/a/b",       NULL},
+		{"/dev/md/",          NULL},
+		{"ms_d0",             NULL},   /* ms has no md_d analog */
+		{"md_d12",            "md"},
+		{"/dev/ms/ms1",       "ms"},
 	};
 	for (size_t i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
 		const struct subsys *got = path_to_subsys(cases[i].path);
@@ -137,6 +151,10 @@ static void test_for_devnm(void)
 	check_int("for_devnm ms42 -> ms", s == &subsys_ms, 1);
 	s = subsys_for_devnm("sda");
 	check_int("for_devnm sda -> NULL", s == NULL, 1);
+	s = subsys_for_devnm("md0foo");
+	check_int("for_devnm md0foo -> NULL", s == NULL, 1);
+	s = subsys_for_devnm("ms1@example.com");
+	check_int("for_devnm ms1@example.com -> NULL", s == NULL, 1);
 	s = subsys_for_devnm("");
 	check_int("for_devnm empty -> NULL", s == NULL, 1);
 	s = subsys_for_devnm(NULL);
@@ -209,6 +227,52 @@ static void test_scan_argv(void)
 		mixed = false;
 		s = subsys_scan_argv(3, a, &mixed);
 		check_int("scan: only flags -> NULL", s == NULL && !mixed, 1);
+	}
+	{
+		/* Space-separated option values that merely start with a
+		 * device-name prefix must not select a subsystem. */
+		char *a[] = {"mdadm", "--monitor", "--scan",
+		             "--mail", "ms1@example.com", NULL};
+		mixed = false;
+		s = subsys_scan_argv(5, a, &mixed);
+		check_int("scan: --mail ms1@example.com -> NULL",
+			  s == NULL && !mixed, 1);
+	}
+	{
+		char *a[] = {"mdadm", "--detail", "/dev/md0",
+		             "ms1@example.com", NULL};
+		mixed = false;
+		s = subsys_scan_argv(4, a, &mixed);
+		check_int("scan: /dev/md0 + ms1@example.com -> md, not mixed",
+			  s == &subsys_md && !mixed, 1);
+	}
+	{
+		char *a[] = {"mdadm", "--create", "/dev/md0", "-l1", "-n2",
+		             "--homehost", "md1host",
+		             "--backup-file", "ms0.bak",
+		             "/dev/sda1", "/dev/sdb1", NULL};
+		mixed = false;
+		s = subsys_scan_argv(11, a, &mixed);
+		check_int("scan: --homehost md1host --backup-file ms0.bak -> md",
+			  s == &subsys_md && !mixed, 1);
+	}
+	{
+		char *a[] = {"mdadm", "--grow", "/dev/ms0",
+		             "--backup-file", "/dev/md0.bak", NULL};
+		mixed = false;
+		s = subsys_scan_argv(5, a, &mixed);
+		check_int("scan: --backup-file /dev/md0.bak -> ms",
+			  s == &subsys_ms && !mixed, 1);
+	}
+	{
+		/* A component that is a partition of an md array does not
+		 * say which subsystem the invocation operates on. */
+		char *a[] = {"mdadm", "--create", "/dev/ms0", "-l1", "-n2",
+		             "/dev/md0p1", "/dev/md1p1", NULL};
+		mixed = false;
+		s = subsys_scan_argv(7, a, &mixed);
+		check_int("scan: md partitions as ms components -> ms",
+			  s == &subsys_ms && !mixed, 1);
 	}
 }
 

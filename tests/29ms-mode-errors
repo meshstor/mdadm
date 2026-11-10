@@ -52,4 +52,34 @@ if [ ! -e /proc/msstat ]; then
 	fi
 fi
 
+# 4. A token that merely starts with a device-name prefix (an option
+#    value such as a mail address or a hostname) is not a device name
+#    and must not count as an ms device.
+out=$($mdadm --detail /dev/md0 ms1@example.com 2>&1) && rc=$? || rc=$?
+case "$out" in
+	*"cannot operate on md and ms devices"*)
+		echo "FAIL: 'ms1@example.com' was taken for an ms device"
+		echo "Got: $out"
+		exit 1
+		;;
+esac
+
+# 5. Same on a host without ms: the value must not select ms and then
+#    fail the availability check.
+if [ ! -e /proc/msstat ]; then
+	out=$($mdadm --version --mail ms1@example.com 2>&1) && rc=$? || rc=$?
+	case "$out" in
+		*"'ms' block device class is not registered"*)
+			echo "FAIL: 'ms1@example.com' selected the ms subsystem"
+			echo "Got: $out"
+			exit 1
+			;;
+	esac
+	if [ $rc -ne 0 ]; then
+		echo "FAIL: --version --mail ms1@example.com expected rc=0, got rc=$rc"
+		echo "Got: $out"
+		exit 1
+	fi
+fi
+
 echo "29ms-mode-errors: PASS"
