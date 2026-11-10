@@ -1724,7 +1724,9 @@ static int store_super1(struct supertype *st, int fd)
 				return 5;
 		}
 	}
-	fsync(fd);
+	/* A write through the page cache reports its error only here. */
+	if (fsync(fd) != 0)
+		return 6;
 
 	return 0;
 }

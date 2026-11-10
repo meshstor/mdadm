@@ -1,0 +1,94 @@
+# Test: --zero-superblock fails when the zeroed block cannot be written.
+#
+# --zero-superblock writes the zeroed block through the page cache and
+# store_super1() then calls fsync.  A device that takes the write into the
+# cache and fails it on the way out (a network path that dropped, a failing
+# disk) reports the error only at the fsync.  mdadm must not exit 0 then:
+# the superblock is still on the device, and a caller that reads the exit
+# status as "this device is blank now" would be wrong.
+#
+# dm-flakey with error_writes gives a device whose reads work and whose
+# writes fail.  udev's md rule runs mdadm -I on every change event of a dm
+# device, so each table switch can assemble the array from the device
+# again; release_dm stops that array before the device is used.  The
+# harness sources this script in a subshell, so the EXIT trap removes the
+# dm device however the script ends.  The harness also sources it inside
+# an 'if' condition, where bash ignores errexit, so every command that
+# must succeed carries '|| die'.  No set -u: die() runs the harness's
+# save_log, which reads unset variables.
+
+dmname=mdadm-test-zero-eio
+dm=/dev/mapper/$dmname
+
+if ! command -v dmsetup > /dev/null; then
+	echo "SKIP: dmsetup not found"
+	exit 3
+fi
+size=$(blockdev --getsz $dev0) || die "cannot size $dev0"
+linear="0 $size linear $dev0 0"
+failing="0 $size flakey $dev0 0 0 3600 1 error_writes"
+# Stop any array that udev assembled from the dm device.  This also runs
+# from the EXIT trap, where the harness's errexit applies again.
+release_dm() {
+	local h
+
+	udevadm settle || true
+	[ -b $dm ] || return 0
+	for h in /sys/class/block/$(basename "$(readlink -f $dm)")/holders/*; do
+		if [ -e "$h" ]; then
+			$mdadm -S /dev/${h##*/} > /dev/null 2>&1 || true
+		fi
+	done
+	return 0
+}
+# A loaded table goes live on the resume.
+switch_table() {
+	dmsetup load $dmname --table "$1" && dmsetup resume $dmname &&
+		release_dm
+}
+
+# If the device cannot go now, have it removed once it is released, and
+# still fail the test: a leftover device holds a loop device.
+trap 'release_dm; dmsetup remove --retry $dmname 2> /dev/null ||
+	{ dmsetup remove --deferred $dmname 2> /dev/null; false; }' EXIT
+if ! dmsetup create $dmname --table "$linear"; then
+	echo "SKIP: cannot create a device-mapper device"
+	exit 3
+fi
+if ! switch_table "$failing"; then
+	echo "SKIP: dm-flakey with error_writes is not available"
+	exit 3
+fi
+switch_table "$linear" || die "cannot restore the linear table"
+
+$mdadm -CR $md0 -l1 -n2 --assume-clean $dm missing || die "create failed"
+$mdadm -S $md0 || die "stop failed"
+$mdadm --examine $dm > /dev/null || die "no superblock on $dm to zero"
+
+switch_table "$failing" || die "cannot load the failing table"
+if out=$($mdadm --zero-superblock $dm 2>&1); then
+	die "--zero-superblock exited 0 although the write failed"
+fi
+# It must fail on the write, not on opening the device.
+case "$out" in
+*"Could not zero superblock"*)
+	;;
+*)
+	die "--zero-superblock failed for another reason: $out"
+	;;
+esac
+
+# The premise of the check above: the failed write left the superblock on
+# the device.  Drop the page cache so --examine reads the device.
+switch_table "$linear" || die "cannot restore the linear table"
+blockdev --flushbufs $dm || die "cannot drop the cache of $dm"
+$mdadm --examine $dm > /dev/null || die "the superblock is gone, so the write did not fail"
+
+# On a working device the same command zeroes the superblock and exits 0.
+$mdadm --zero-superblock $dm || die "--zero-superblock failed on a working device"
+blockdev --flushbufs $dm || die "cannot drop the cache of $dm"
+if $mdadm --examine $dm > /dev/null 2>&1; then
+	die "superblock still on $dm after --zero-superblock"
+fi
+
+echo "35zero-superblock-eio: PASS"
