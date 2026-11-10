@@ -1729,6 +1729,17 @@ int Manage_subdevs(char *devname, int fd,
 				else
 					frozen = -1;
 			}
+			/* A pin is two steps, ADD_NEW_DISK then the slot
+			 * write, and only a frozen array cannot seat the
+			 * device itself in between, into the lowest free
+			 * slot of any column.  A syncing array cannot be
+			 * frozen, so refuse before anything is written. */
+			if (dv->slot >= 0 && frozen != 1) {
+				pr_err("Cannot pin %s into slot %d: %s is syncing or frozen by another operation\n",
+				       dv->devname, dv->slot, devname);
+				close_fd(&tfd);
+				goto abort;
+			}
 			rv = Manage_add(fd, tfd, dv, tst, &array, force, verbose, devname, update,
 					rdev, array_size, raid_slot);
 			close_fd(&tfd);
