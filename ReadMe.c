@@ -110,6 +110,7 @@ struct option long_options[] = {
 	{"udev-rules", 2, 0, UdevRules},
 	{"offroot", 0, 0, OffRootOpt},
 	{"udev", 0, 0, Udev},
+	{"subsys",  1, 0, Subsys},
 	{"examine-badblocks", 0, 0, ExamineBB},
 
 	{"dump", 1, 0, Dump},
@@ -273,6 +274,9 @@ char OptionHelp[] =
 "  --export      -Y   : With --detail, --detail-platform or --examine use\n"
 "                       key=value format for easy import into environment\n"
 "  --force       -f   : Override normal checks and be more forceful\n"
+"  --subsys=          : Select the RAID subsystem to operate on: md, ms or\n"
+"                       auto (default: from the device names given, then\n"
+"                       MDADM_SUBSYS, else ms if /proc/msstat exists, else md)\n"
 "\n"
 "  --assemble    -A   : Assemble an array\n"
 "  --build       -B   : Build an array without metadata\n"

@@ -488,6 +488,7 @@ enum special_options {
 	WriteJournal,
 	ConsistencyPolicy,
 	LogicalBlockSize,
+	Subsys,
 };
 
 enum update_opt {
@@ -1547,7 +1548,6 @@ extern bool is_string_lq(const char * const str, size_t max_len);
 extern bool is_dev_alive(char *path);
 extern int16_t le16_to_cpu_s(__le16 value);
 extern int32_t le32_to_cpu_s(__le32 value);
-extern int get_mdp_major(void);
 extern int get_maj_min(char *dev, int *major, int *minor);
 extern bool is_bit_set(int *val, unsigned char index);
 extern int dev_open(char *dev, int flags);

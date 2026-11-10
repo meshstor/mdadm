@@ -421,6 +421,45 @@ and
 .BR \-\-monitor .
 
 .TP
+.B \-\-subsys=
+Select which kernel RAID subsystem
+.I mdadm
+operates on: the standard
+.B md
+driver
+.RB ( /dev/md* ,
+.BR /proc/mdstat )
+or the parallel
+.B ms
+driver
+.RB ( /dev/ms* ,
+.BR /proc/msstat ).
+Accepted values are
+.BR md ,
+.B ms
+and
+.BR auto .
+A single invocation operates on exactly one subsystem.  When the option
+is absent or set to
+.BR auto ,
+the subsystem is taken from the device names given on the command
+line, then from the
+.B MDADM_SUBSYS
+environment variable, and otherwise defaults to
+.B ms
+when
+.B /proc/msstat
+exists and to
+.B md
+otherwise.  Mixing
+.B md
+and
+.B ms
+device names in one invocation is an error, as is selecting
+.B ms
+on a system where it is not loaded.
+
+.TP
 .B \-\-home\-cluster=
 specifies the cluster name for the md device. The md device can be assembled
 only on the cluster which matches the name specified. If this option is not
@@ -2979,6 +3018,16 @@ still be added safely.
 .SH ENVIRONMENT
 This section describes environment variables that affect how mdadm
 operates.
+
+.TP
+.B MDADM_SUBSYS
+Selects the RAID subsystem
+.RB ( md ", " ms " or " auto )
+when no
+.B \-\-subsys
+option is given and the device names on the command line do not
+determine it.  See
+.BR \-\-subsys .
 
 .TP
 .B MDADM_NO_MDMON

@@ -74,36 +74,6 @@ bool is_dev_alive(char *path)
  * have no dependency on anything outside this file.
  */
 
-int get_mdp_major(void)
-{
-	static int mdp_major = -1;
-	FILE *fl;
-	char *w;
-	int have_block = 0;
-	int have_devices = 0;
-	int last_num = -1;
-
-	if (mdp_major != -1)
-		return mdp_major;
-
-	fl = fopen("/proc/devices", "r");
-	if (!fl)
-		return -1;
-
-	while ((w = conf_word(fl, 1))) {
-		if (have_block && strcmp(w, "devices:") == 0)
-			have_devices = 1;
-		have_block =  (strcmp(w, "Block") == 0);
-		if (isdigit(w[0]))
-			last_num = atoi(w);
-		if (have_devices && strcmp(w, "mdp") == 0)
-			mdp_major = last_num;
-		free(w);
-	}
-	fclose(fl);
-
-	return mdp_major;
-}
 
 char *devid2kname(dev_t devid)
 {
@@ -177,13 +147,22 @@ char *devid2devnm(dev_t devid)
 			return devnm;
 		}
 	}
-	if (major(devid) == MD_MAJOR)
-		sprintf(devnm,"md%d", minor(devid));
-	else if (major(devid) == (unsigned)get_mdp_major())
-		sprintf(devnm,"md_d%d",
-			(minor(devid)>>MdpMinorShift));
-	else
-		return NULL;
+	{
+		const struct subsys *s = subsys_for_major(major(devid));
+		if (s && s->major > 0 &&
+		    (unsigned int)s->major == major(devid)) {
+			snprintf(devnm, sizeof(devnm), "%s%d",
+				 s->devnm_prefix, minor(devid));
+		} else if (s && s->mdp_major > 0 &&
+			   (unsigned int)s->mdp_major == major(devid) &&
+			   s->devnm_part_prefix) {
+			snprintf(devnm, sizeof(devnm), "%s%d",
+				 s->devnm_part_prefix,
+				 minor(devid) >> MdpMinorShift);
+		} else {
+			return NULL;
+		}
+	}
 
 	return devnm;
 }
@@ -200,12 +179,7 @@ bool stat_is_md_dev(struct stat *st)
 {
 	if ((S_IFMT & st->st_mode) != S_IFBLK)
 		return false;
-	if (major(st->st_rdev) == MD_MAJOR)
-		return true;
-	if (major(st->st_rdev) == (unsigned)get_mdp_major())
-		return true;
-
-	return false;
+	return subsys_for_major(major(st->st_rdev)) != NULL;
 }
 
 char *fd2devnm(int fd)

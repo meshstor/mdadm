@@ -1,0 +1,67 @@
+# Test --subsys=auto and MDADM_SUBSYS=auto: defer to autodetection.
+#   Selects 'ms' when /proc/msstat is present, otherwise falls back to 'md'.
+# This test only exercises argv parsing and the /proc/msstat probe; it does
+# not require the meshstor-md kernel module.
+
+set -e -u
+
+# 1. --subsys=auto is accepted (no error from option parser).
+out=$($mdadm --subsys=auto --version 2>&1) && rc=$? || rc=$?
+if [ $rc -ne 0 ]; then
+	echo "FAIL: --subsys=auto --version expected rc=0, got rc=$rc"
+	echo "Got: $out"
+	exit 1
+fi
+case "$out" in
+	*"is not a known subsystem"*)
+		echo "FAIL: --subsys=auto was rejected as unknown"
+		echo "Got: $out"
+		exit 1
+		;;
+esac
+
+# 2. When /proc/msstat is absent, --subsys=auto must fall back to md
+#    (so it must NOT print the 'ms block device class is not registered' error).
+if [ ! -e /proc/msstat ]; then
+	out=$($mdadm --subsys=auto --version 2>&1) && rc=$? || rc=$?
+	case "$out" in
+		*"'ms' block device class is not registered"*)
+			echo "FAIL: --subsys=auto errored when ms unavailable; should fall back to md"
+			echo "Got: $out"
+			exit 1
+			;;
+	esac
+	if [ $rc -ne 0 ]; then
+		echo "FAIL: --subsys=auto with no ms expected rc=0, got rc=$rc"
+		echo "Got: $out"
+		exit 1
+	fi
+fi
+
+# 3. When /proc/msstat is present, --subsys=auto must succeed (selects ms).
+if [ -e /proc/msstat ]; then
+	out=$($mdadm --subsys=auto --version 2>&1) && rc=$? || rc=$?
+	if [ $rc -ne 0 ]; then
+		echo "FAIL: --subsys=auto with ms available expected rc=0, got rc=$rc"
+		echo "Got: $out"
+		exit 1
+	fi
+fi
+
+# 4. MDADM_SUBSYS=auto behaves like --subsys=auto: accepted, and falls
+#    through to autodetection instead of being rejected as unknown.
+out=$(MDADM_SUBSYS=auto $mdadm --version 2>&1) && rc=$? || rc=$?
+if [ $rc -ne 0 ]; then
+	echo "FAIL: MDADM_SUBSYS=auto --version expected rc=0, got rc=$rc"
+	echo "Got: $out"
+	exit 1
+fi
+case "$out" in
+	*"is not a known subsystem"*)
+		echo "FAIL: MDADM_SUBSYS=auto was rejected as unknown"
+		echo "Got: $out"
+		exit 1
+		;;
+esac
+
+echo "31ms-subsys-auto: PASS"
