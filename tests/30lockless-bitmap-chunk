@@ -1,0 +1,116 @@
+# Test --bitmap=lockless together with --bitmap-chunk, on md and on ms.
+#
+# The MeshStor CSI driver creates every array with one command line for
+# both bitmap types, always including --bitmap-chunk=128M.  For a
+# lockless bitmap the kernel picks its own chunk size on first use, so
+# mdadm must accept the option instead of failing the create.
+#
+# For md, and for ms when /proc/msstat exists, wherever the kernel has
+# llbitmap:
+#   1. --bitmap=lockless --bitmap-chunk=128M with the CSI driver's other
+#      create flags succeeds and the kernel selects llbitmap
+#   2. the lockless bitmap is selected again after stop and re-assemble
+#   3. the option parser still rejects a non-power-of-two chunk
+# SKIPs when neither subsystem has llbitmap.
+#
+# The harness sources this script inside an 'if' condition, where bash
+# ignores errexit, so every check is explicit.
+set -u
+
+ms0=/dev/ms0
+tested=0
+
+# Runs from the EXIT trap, where the harness's errexit applies again.
+stop_both() {
+	$mdadm --subsys=md -S $md0 > /dev/null 2>&1 || true
+	if [ -e /proc/msstat ]; then
+		$mdadm --subsys=ms -S $ms0 > /dev/null 2>&1 || true
+	fi
+}
+trap stop_both EXIT
+
+# probe SUBSYS DEV: 0 if a plain lockless create works, 2 if the kernel
+# has no llbitmap, 1 on any other failure.
+probe() {
+	local out
+	if out=$($mdadm --subsys=$1 -CR $2 -l1 -n2 --bitmap=lockless \
+			$dev0 $dev1 2>&1); then
+		$mdadm --subsys=$1 -S $2 > /dev/null 2>&1
+		return 0
+	fi
+	case "$out" in
+	*"does not support lockless bitmap"*)
+		return 2
+		;;
+	esac
+	echo "$out"
+	return 1
+}
+
+# check_llbitmap SUBSYS SYSDIR WHEN
+check_llbitmap() {
+	if [ ! -d $2/llbitmap ]; then
+		echo "FAIL ($1): $2/llbitmap missing $3"
+		cat $2/bitmap_type 2>/dev/null
+		exit 1
+	fi
+}
+
+# run_case SUBSYS DEV SYSDIR
+run_case() {
+	local subsys=$1 dev=$2 sysdir=$3 out
+
+	if ! out=$($mdadm --subsys=$subsys -CR $dev -l1 -n2 --metadata=1.2 \
+			--homehost=any --assume-clean --bitmap=lockless \
+			--bitmap-chunk=128M --consistency-policy=bitmap --failfast \
+			$dev0 $dev1 2>&1); then
+		echo "FAIL ($subsys) 1: create with --bitmap=lockless --bitmap-chunk=128M failed"
+		echo "$out"
+		exit 1
+	fi
+	check_llbitmap $subsys $sysdir "after create"
+
+	if ! $mdadm --subsys=$subsys -S $dev; then
+		echo "FAIL ($subsys) 2: stop failed"
+		exit 1
+	fi
+	if ! out=$($mdadm --subsys=$subsys -A $dev $dev0 $dev1 2>&1); then
+		echo "FAIL ($subsys) 2: re-assemble failed"
+		echo "$out"
+		exit 1
+	fi
+	check_llbitmap $subsys $sysdir "after re-assemble"
+	if ! $mdadm --subsys=$subsys -S $dev; then
+		echo "FAIL ($subsys) 2: stop after re-assemble failed"
+		exit 1
+	fi
+
+	if out=$($mdadm --subsys=$subsys -CR $dev -l1 -n2 --bitmap=lockless \
+			--bitmap-chunk=100M $dev0 $dev1 2>&1); then
+		echo "FAIL ($subsys) 3: --bitmap-chunk=100M (not a power of two) was accepted"
+		exit 1
+	fi
+	tested=$((tested + 1))
+}
+
+probe md $md0
+case $? in
+0) run_case md $md0 /sys/block/${md0##*/}/md ;;
+2) echo "md: the kernel has no llbitmap, skipping md" ;;
+*) echo "FAIL (md): probe create with --bitmap=lockless failed"; exit 1 ;;
+esac
+
+if [ -e /proc/msstat ]; then
+	probe ms $ms0
+	case $? in
+	0) run_case ms $ms0 /sys/block/ms0/ms ;;
+	2) echo "ms: the module has no llbitmap, skipping ms" ;;
+	*) echo "FAIL (ms): probe create with --bitmap=lockless failed"; exit 1 ;;
+	esac
+fi
+
+if [ $tested -eq 0 ]; then
+	echo "SKIP: neither md nor ms has llbitmap"
+	exit 3
+fi
+echo "30lockless-bitmap-chunk: PASS ($tested subsystem(s))"
