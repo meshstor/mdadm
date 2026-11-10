@@ -1253,10 +1253,15 @@ int devname_matches(char *name, char *match)
 	else if (strncmp(match, "/dev/", 5) == 0)
 		match += 5;
 
-	if (strncmp(name, "md", 2) == 0 && isdigit(name[2]))
-		name += 2;
-	if (strncmp(match, "md", 2) == 0 && isdigit(match[2]))
-		match += 2;
+	{
+		size_t plen = strlen(current_subsys->devnm_prefix);
+		if (strncmp(name, current_subsys->devnm_prefix, plen) == 0 &&
+		    isdigit((unsigned char)name[plen]))
+			name += plen;
+		if (strncmp(match, current_subsys->devnm_prefix, plen) == 0 &&
+		    isdigit((unsigned char)match[plen]))
+			match += plen;
+	}
 
 	return (strcmp(name, match) == 0);
 }
