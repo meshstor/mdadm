@@ -35,9 +35,11 @@ int create_named_array(char *devnm)
 {
 	int fd;
 	int n = -1;
-	static const char new_array_file[] = {
-		"/sys/module/md_mod/parameters/new_array"
-	};
+	char new_array_file[64];
+
+	snprintf(new_array_file, sizeof(new_array_file),
+		 "/sys/module/%s_mod/parameters/new_array",
+		 current_subsys->name);
 
 	fd = open(new_array_file, O_WRONLY);
 	if (fd >= 0) {
