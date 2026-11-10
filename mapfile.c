@@ -339,9 +339,9 @@ struct map_ent *map_by_name(struct map_ent **mpp, char *name)
 	for (mp = *mpp; mp; mp = mp->next) {
 		if (!mp->path)
 			continue;
-		if (strncmp(mp->path, DEV_MD_DIR, DEV_MD_DIR_LEN) != 0)
+		if (strncmp(mp->path, dev_md_dir(), dev_md_dir_len()) != 0)
 			continue;
-		if (strcmp(mp->path + DEV_MD_DIR_LEN, name) != 0)
+		if (strcmp(mp->path + dev_md_dir_len(), name) != 0)
 			continue;
 		if (!mddev_busy(mp->devnm)) {
 			mp->bad = 1;
@@ -385,7 +385,7 @@ static char *resolve_md_path(struct supertype *st, struct mdinfo *info, char *ho
 		char *path = match->devname;
 
 		if (path[0] != '/') {
-			strcpy(namebuf, DEV_MD_DIR);
+			strcpy(namebuf, dev_md_dir());
 			strcat(namebuf, path);
 			path = namebuf;
 		}
@@ -419,12 +419,12 @@ static char *resolve_md_path(struct supertype *st, struct mdinfo *info, char *ho
 
 	while (conflict) {
 		if (unum >= 0)
-			sprintf(namebuf, DEV_MD_DIR "%s%s%d", name, sep, unum);
+			sprintf(namebuf, "%s%s%s%d", dev_md_dir(), name, sep, unum);
 		else
-			sprintf(namebuf, DEV_MD_DIR "%s", name);
+			sprintf(namebuf, "%s%s", dev_md_dir(), name);
 		unum++;
 		if (lstat(namebuf, &stb) != 0 &&
-		    (*map == NULL || !map_by_name(map, namebuf + DEV_MD_DIR_LEN)))
+		    (*map == NULL || !map_by_name(map, namebuf + dev_md_dir_len())))
 			conflict = 0;
 	}
 	return namebuf;
@@ -492,7 +492,7 @@ void RebuildMap(void)
 			devid = devnm2devid(md->devnm);
 			path = map_dev(major(devid), minor(devid), 0);
 
-			if (path == NULL || strncmp(path, DEV_MD_DIR, DEV_MD_DIR_LEN) != 0)
+			if (path == NULL || strncmp(path, dev_md_dir(), dev_md_dir_len()) != 0)
 				path = resolve_md_path(st, info, homehost, require_homehost,
 						       &map, namebuf);
 			map_add(&map, md->devnm, info->text_version, info->uuid, path);

@@ -238,8 +238,8 @@ mdadm_status_t _ident_set_devname(struct mddev_ident *ident, const char *devname
 	if (is_devname_md_numbered(devname) == true || is_devname_md_d_numbered(devname) == true)
 		goto pass;
 
-	if (strncmp(devname, DEV_MD_DIR, DEV_MD_DIR_LEN) == 0)
-		name = devname + DEV_MD_DIR_LEN;
+	if (strncmp(devname, dev_md_dir(), dev_md_dir_len()) == 0)
+		name = devname + dev_md_dir_len();
 	else if (strncmp(devname, named_dev_pref, named_dev_pref_size) == 0)
 		name = devname + named_dev_pref_size;
 	else
@@ -1243,13 +1243,13 @@ int devname_matches(char *name, char *match)
 	 *  mdNN with NN
 	 * then just strcmp
 	 */
-	if (strncmp(name, DEV_MD_DIR, DEV_MD_DIR_LEN) == 0)
-		name += DEV_MD_DIR_LEN;
+	if (strncmp(name, dev_md_dir(), dev_md_dir_len()) == 0)
+		name += dev_md_dir_len();
 	else if (strncmp(name, "/dev/", 5) == 0)
 		name += 5;
 
-	if (strncmp(match, DEV_MD_DIR, DEV_MD_DIR_LEN) == 0)
-		match += DEV_MD_DIR_LEN;
+	if (strncmp(match, dev_md_dir(), dev_md_dir_len()) == 0)
+		match += dev_md_dir_len();
 	else if (strncmp(match, "/dev/", 5) == 0)
 		match += 5;
 

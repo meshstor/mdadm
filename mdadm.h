@@ -163,6 +163,7 @@ struct dlm_lksb {
 #include	"bitmap.h"
 #include	"msg.h"
 #include	"mdadm_status.h"
+#include	"subsys.h"
 
 /*
  * Partially stolen from include/linux/unaligned/packed_struct.h
