@@ -457,7 +457,9 @@ and
 .B ms
 device names in one invocation is an error, as is selecting
 .B ms
-on a system where it is not loaded.
+on a system where it is not loaded.  Arrays with external metadata
+(IMSM, DDF) are not supported under
+.BR ms .
 
 .TP
 .B \-\-home\-cluster=
