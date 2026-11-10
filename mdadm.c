@@ -410,6 +410,7 @@ int main(int argc, char *argv[])
 					dv->failfast = failfast;
 					dv->used = 0;
 					dv->slot = slot;
+					dv->unmark_rdev = 0;
 					slot = -1;	/* bind to this device only; not sticky */
 					dv->next = NULL;
 					*devlistend = dv;
@@ -469,6 +470,7 @@ int main(int argc, char *argv[])
 			dv->failfast = failfast;
 			dv->used = 0;
 			dv->slot = slot;
+			dv->unmark_rdev = 0;
 			slot = -1;	/* bind to this device only; not sticky */
 			dv->next = NULL;
 			*devlistend = dv;
@@ -1249,6 +1251,7 @@ int main(int argc, char *argv[])
 			dv->disposition = 'j';  /* WriteJournal */
 			dv->used = 0;
 			dv->slot = -1;
+			dv->unmark_rdev = 0;
 			dv->next = NULL;
 			*devlistend = dv;
 			devlistend = &dv->next;

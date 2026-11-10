@@ -1233,12 +1233,16 @@ int Manage_replace(struct supertype *tst, int fd, struct mddev_dev *dv,
 		    di->disk.minor == (int)minor(rdev))
 			break;
 	if (di) {
+		char buf[256];
+		int already_wanting = 1;
 		int rv;
 		if (di->disk.raid_disk < 0) {
 			pr_err("%s is not active and so cannot be replaced.\n",
 			       dv->devname);
 			goto abort;
 		}
+		if (sysfs_get_str(mdi, di, "state", buf, sizeof(buf)) > 0)
+			already_wanting = strstr(buf, "want_replacement") != NULL;
 		rv = sysfs_set_str(mdi, di,
 				   "state", "want_replacement");
 		if (rv) {
@@ -1257,6 +1261,7 @@ int Manage_replace(struct supertype *tst, int fd, struct mddev_dev *dv,
 		if (dv) {
 			dv->disposition = 'w';
 			dv->used = di->disk.raid_disk;
+			dv->unmark_rdev = already_wanting ? 0 : rdev;
 		}
 		sysfs_free(mdi);
 		return 1;
@@ -1837,6 +1842,7 @@ int Manage_subdevs(char *devname, int fd,
 			rv = Manage_with(tst, fd, dv, rdev, verbose, devname);
 			if (rv < 0)
 				goto abort;
+			dv->unmark_rdev = 0;
 			break;
 		}
 	}
@@ -1849,6 +1855,17 @@ int Manage_subdevs(char *devname, int fd,
 
 abort:
 	free(tst);
+	for (dv = devlist; dv; dv = dv->next) {
+		if (!dv->unmark_rdev)
+			continue;
+		sysfs_init_dev(&devinfo, dv->unmark_rdev);
+		if (sysfs_set_str(&info, &devinfo, "state", "-want_replacement") == 0)
+			pr_err("cleared the replacement request for device %d in %s\n",
+			       dv->used, devname);
+		else
+			pr_err("failed to clear the replacement request for device %d in %s: %s\n",
+			       dv->used, devname, strerror(errno));
+	}
 	if (frozen > 0)
 		sysfs_set_str(&info, NULL, "sync_action", "idle");
 	return !test && busy ? 2 : 1;
@@ -1953,6 +1970,7 @@ int move_spare(char *from_devname, char *to_devname, dev_t devid)
 	devlist.writemostly = FlagDefault;
 	devlist.failfast = FlagDefault;
 	devlist.slot = -1;
+	devlist.unmark_rdev = 0;
 	devlist.devname = devname;
 	sprintf(devname, "%d:%d", major(devid), minor(devid));
 

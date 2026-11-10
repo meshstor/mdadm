@@ -1,0 +1,62 @@
+# Test: --replace OLD --with NEW adds NEW when it is not yet a member, pins it
+# as OLD's replacement inside the same freeze, and clears the replacement
+# request it set when it fails.
+#
+# raid10 n2 x4: mirror columns are slots (0,1) and (2,3).
+#
+# A member's sysfs 'slot' is stable to assert right after a call.  The
+# 'replacement' word on NEW and 'want_replacement' on OLD disappear when the
+# copy completes (md fails OLD and drops it from the slot), so they are only
+# asserted while the copy is throttled through sync_speed_max.
+#
+# The harness sources this script inside an 'if' condition, where bash
+# ignores errexit, so every command that must succeed carries '|| die'.
+#
+# Not covered: the cleanup after a slot write the kernel refuses (NEW is
+# removed again).  Every refusal below happens before NEW is added; no
+# deterministic trigger for a kernel-side refusal is known.
+set -u
+
+mddev=$(basename $md0)
+sysmd=/sys/block/$mddev/md
+
+slot_of()   { cat $sysmd/dev-$(basename $1)/slot; }
+state_of()  { cat $sysmd/dev-$(basename $1)/state; }
+is_member() { [ -d $sysmd/dev-$(basename $1) ]; }
+wants_replacement() { state_of $1 | grep -q want_replacement; }
+set_action() { echo $1 > $sysmd/sync_action || die "cannot write $1 to sync_action"; }
+throttle()   { echo 1000 > $sysmd/sync_speed_max || die "cannot set sync_speed_max"; }
+unthrottle() { echo system > $sysmd/sync_speed_max || die "cannot reset sync_speed_max"; }
+# md starts the sync thread a few ms after the unfreeze, after mdadm has
+# exited; wait up to 5 s for the throttled copy to show in /proc/mdstat.
+wait_recovery_shown() {
+	for i in $(seq 50); do
+		grep -Eq 'recovery *=' /proc/mdstat && return 0
+		sleep 0.1
+	done
+	die "sync_speed_max did not throttle the copy; see the design doc, section 7"
+}
+
+$mdadm -CR $md0 -l10 -n4 -pn2 $dev0 $dev1 $dev2 $dev3 || die "create failed"
+check wait
+check raid10
+
+# (g) Legacy spare, pin refused.  A running check cannot be frozen and the
+# kernel refuses the slot write with EBUSY.  The replacement request this
+# call set on $dev1 must be cleared again; $dev4 stays an idle spare.
+throttle
+set_action check
+$mdadm $md0 --add $dev4 || die "add of $dev4 failed"
+if $mdadm $md0 --replace $dev1 --with $dev4; then
+	die "--replace --with during a check should have failed"
+fi
+if wants_replacement $dev1; then
+	die "$dev1 still wants replacement after the failed --with"
+fi
+[ "$(slot_of $dev4)" = "none" ] || die "$dev4 should still be an idle spare"
+set_action idle
+unthrottle
+check wait
+
+$mdadm -S $md0 || die "stop failed"
+echo "33replace-with-add: PASS"

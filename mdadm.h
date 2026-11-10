@@ -667,6 +667,10 @@ struct mddev_dev {
 	enum flag_mode failfast;
 	int used;		/* set when used */
 	int slot;		/* requested raid_disk for --add --slot; -1 if unset */
+	dev_t unmark_rdev;	/* --with: member whose want_replacement this call
+				 * set and has not yet served; cleared on abort.
+				 * 0 if nothing to clear
+				 */
 	long long data_offset;
 	struct mddev_dev *next;
 };
