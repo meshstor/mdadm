@@ -1514,7 +1514,11 @@ int Manage_subdevs(char *devname, int fd,
 			goto abort;
 		}
 		/* refuse if the target slot is already occupied */
-		smdi = sysfs_read(fd, NULL, GET_DEVS | GET_STATE);
+		/* GET_DEVS_ALL: a member whose block link is gone (its namespace
+		 * vanished) still holds its raid slot in the kernel; without it the
+		 * scan would miss the collision and the kernel would return -EEXIST
+		 * only after the device was added. */
+		smdi = sysfs_read(fd, NULL, GET_DEVS | GET_DEVS_ALL | GET_STATE);
 		for (sdi = smdi ? smdi->devs : NULL; sdi; sdi = sdi->next)
 			if (sdi->disk.raid_disk == dv->slot)
 				break;
@@ -1734,8 +1738,21 @@ int Manage_subdevs(char *devname, int fd,
 				count++;
 			if (rv > 0 && dv->slot >= 0 &&
 			    set_added_member_slot(fd, rdev, dv->slot,
-						  dv->devname) < 0)
+						  dv->devname) < 0) {
+				/* The device is in the array with no slot.  Left
+				 * there, md seats it into the lowest free slot of any
+				 * column as soon as the array unfreezes (or the
+				 * resync ends), so take it out again while it is
+				 * still unpositioned: HOT_REMOVE_DISK kicks an rdev
+				 * with raid_disk < 0 directly, frozen or not. */
+				if (ioctl(fd, HOT_REMOVE_DISK, (unsigned long)rdev) == 0)
+					pr_err("removed %s from %s again: its slot could not be set\n",
+					       dv->devname, devname);
+				else
+					pr_err("failed to remove %s from %s after its slot could not be set: %s\n",
+					       dv->devname, devname, strerror(errno));
 				goto abort;
+			}
 			break;
 
 		case 'r':

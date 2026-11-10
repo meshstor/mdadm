@@ -1,0 +1,140 @@
+# --add --slot must refuse a slot that a vanished member still holds.
+#
+# When a member's disk goes away (an NVMe-oF namespace deleted; here a
+# scsi_debug disk), md keeps the member, and its slot, until it is failed
+# and removed; only its block link dangles.  The --add --slot pre-check
+# reads the member list with GET_DEVS_ALL to see such a member, and must
+# refuse the collision before it writes anything to the new device.
+# Otherwise the kernel refuses the slot only after the device was added,
+# and the device is left with a spare superblock of the array.
+#
+# udev's md rule removes a vanished member at once (mdadm -If on the
+# remove event), so the test stops udev's exec queue around the deletion.
+# A watchdog restarts the queue after 60 s should the test be killed with
+# SIGKILL; after killing a test run, also run
+# `udevadm control --start-exec-queue` and `modprobe -r scsi_debug`.
+# Runs on md, and on ms when /proc/msstat exists.  SKIPs without the
+# scsi_debug module, or when scsi_debug is already loaded.
+#
+# The harness sources this script inside an 'if' condition, where bash
+# ignores errexit, so every check is explicit.
+set -u
+
+if ! modinfo scsi_debug > /dev/null 2>&1; then
+	echo "SKIP: no scsi_debug module"
+	exit 3
+fi
+if grep -q '^scsi_debug ' /proc/modules; then
+	echo "SKIP: scsi_debug is already loaded"
+	exit 3
+fi
+
+ms0=/dev/ms0
+udev_stopped=0
+watchdog=
+
+start_udev() {
+	if [ $udev_stopped = 1 ]; then
+		udevadm control --start-exec-queue
+		udev_stopped=0
+		if [ -n "$watchdog" ]; then
+			kill $watchdog 2> /dev/null || true
+		fi
+		watchdog=
+		udevadm settle
+	fi
+	return 0
+}
+
+# Runs from the EXIT trap, where the harness's errexit applies again.
+cleanup_all() {
+	start_udev || true
+	$mdadm --subsys=md -S $md0 > /dev/null 2>&1 || true
+	if [ -e /proc/msstat ]; then
+		$mdadm --subsys=ms -S $ms0 > /dev/null 2>&1 || true
+	fi
+	udevadm settle || true
+	if grep -q '^scsi_debug ' /proc/modules; then
+		modprobe -r scsi_debug > /dev/null 2>&1 || true
+	fi
+}
+trap cleanup_all EXIT
+
+# run_case SUBSYS DEV SYSDIR
+run_case() {
+	local subsys=$1 dev=$2 sysdir=$3 sd out i
+
+	if ! modprobe scsi_debug dev_size_mb=64 num_tgts=1 max_luns=1; then
+		echo "FAIL ($subsys): cannot load scsi_debug"
+		exit 1
+	fi
+	udevadm settle
+	sd=$(ls /sys/bus/pseudo/drivers/scsi_debug/adapter*/host*/target*/*/block 2> /dev/null | head -n1)
+	if [ -z "$sd" ]; then
+		echo "FAIL ($subsys): no scsi_debug disk"
+		exit 1
+	fi
+	$mdadm --zero-superblock $dev1 > /dev/null 2>&1
+	if ! $mdadm --subsys=$subsys -CR $dev -l1 -n2 --assume-clean $dev0 /dev/$sd; then
+		echo "FAIL ($subsys): create failed"
+		exit 1
+	fi
+	udevadm settle
+
+	( sleep 60; udevadm control --start-exec-queue ) > /dev/null 2>&1 &
+	watchdog=$!
+	udev_stopped=1
+	udevadm control --stop-exec-queue
+	echo 1 > /sys/block/$sd/device/delete
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		[ -e $sysdir/dev-$sd/block/dev ] || break
+		sleep 0.5
+	done
+	if [ -e $sysdir/dev-$sd/block/dev ]; then
+		echo "FAIL ($subsys): $sd did not go away"
+		exit 1
+	fi
+	if [ "$(cat $sysdir/dev-$sd/slot 2> /dev/null)" != 1 ]; then
+		echo "SKIP: the kernel did not keep the vanished member in its slot"
+		exit 3
+	fi
+
+	if out=$($mdadm --subsys=$subsys --manage $dev --add --slot 1 $dev1 2>&1); then
+		echo "FAIL ($subsys): --add --slot 1 accepted a slot held by the vanished member"
+		echo "$out"
+		exit 1
+	fi
+	case "$out" in
+	*"--slot 1 is already in use"*)
+		;;
+	*)
+		echo "FAIL ($subsys): --add --slot 1 failed for another reason"
+		echo "$out"
+		exit 1
+		;;
+	esac
+	if $mdadm --examine $dev1 > /dev/null 2>&1; then
+		echo "FAIL ($subsys): the refused --add --slot wrote a superblock to $dev1"
+		exit 1
+	fi
+
+	start_udev
+	if ! $mdadm --subsys=$subsys -S $dev; then
+		echo "FAIL ($subsys): stop failed"
+		exit 1
+	fi
+	udevadm settle
+	if ! modprobe -r scsi_debug; then
+		sleep 2
+		if ! modprobe -r scsi_debug; then
+			echo "FAIL ($subsys): cannot unload scsi_debug"
+			exit 1
+		fi
+	fi
+}
+
+run_case md $md0 /sys/block/${md0##*/}/md
+if [ -e /proc/msstat ]; then
+	run_case ms $ms0 /sys/block/ms0/ms
+fi
+echo "36add-slot-vanished-member: PASS"
