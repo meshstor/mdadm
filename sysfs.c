@@ -347,13 +347,24 @@ static int sysfs_read_rdev(struct mdinfo *dev, char *fname, char *dbase,
 	*attr = "block/dev";
 	strcpy(dbase, *attr);
 	rc = load_sys(fname, buf, sizeof(buf));
-	/* assume this is a stale reference to a hot removed device */
-	if (rc == -ENOENT && !(options & GET_DEVS_ALL))
-		return 1;
-	if (rc < 0)
+	if (rc == -ENOENT) {
+		/* assume this is a stale reference to a hot removed device */
+		if (!(options & GET_DEVS_ALL))
+			return 1;
+		/*
+		 * GET_DEVS_ALL returns it anyway, with no major:minor: the
+		 * kernel still holds the member, and its slot, until it is
+		 * removed from the array.  @dev is reused across retries, so
+		 * clear what an earlier try may have read.
+		 */
+		dev->disk.major = 0;
+		dev->disk.minor = 0;
+	} else if (rc < 0) {
 		return rc;
-	if (sscanf(buf, "%d:%d", &dev->disk.major, &dev->disk.minor) != 2)
+	} else if (sscanf(buf, "%d:%d", &dev->disk.major,
+			  &dev->disk.minor) != 2) {
 		return -EINVAL;
+	}
 
 	if (!(options & GET_DEVS_ALL)) {
 		/* special case check for block devices that can go 'offline' */
